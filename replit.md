@@ -30,4 +30,14 @@ AmzPilot is an Autonomous WordPress Monetization Engine that helps automate affi
 Configured for static deployment via Vite build.
 
 ## Environment Variables
-- `API_KEY`: Google Generative AI API key (optional)
+- `API_KEY`: Google Generative AI API key (optional fallback)
+
+## AI Provider Support
+The app supports multiple AI providers with secure API key storage:
+- **Google Gemini**: Default provider, models include gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro
+- **OpenAI**: GPT-4o, GPT-4o Mini, GPT-4 Turbo, GPT-3.5 Turbo
+- **Anthropic Claude**: Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus
+- **Groq**: Supports custom model input (e.g., llama-3.3-70b-versatile, mixtral-8x7b-32768)
+- **OpenRouter**: Supports custom model input (e.g., anthropic/claude-3.5-sonnet, google/gemini-pro)
+
+All API keys are encrypted before storage using SecureStorage.
