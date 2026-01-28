@@ -20,10 +20,9 @@ import {
   PostPriority, 
   PostType, 
   DeploymentMode, 
-  ComparisonData,
-  FAQItem 
+  ComparisonData
 } from './types';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 
 // ============================================================================
 // CUSTOM ERROR TYPES - Enterprise Error Handling
@@ -108,11 +107,6 @@ interface CacheEntry<T> {
   data: T;
   timestamp: number;
   ttl: number;
-}
-
-interface CacheMetadata {
-  version: string;
-  lastCleanup: number;
 }
 
 interface ProxyConfig {
@@ -1596,8 +1590,6 @@ export const analyzeContentAndFindProduct = async (
   product: ProductDetails | null;
   comparison?: ComparisonData;
 }> => {
-  const emptyResult = { detectedProducts: [], product: null, comparison: undefined };
-
   console.log('[SCAN] Starting ultra-reliable product detection...');
   console.log('[SCAN] Title:', title);
   console.log('[SCAN] Content length:', htmlContent.length);
@@ -1705,7 +1697,7 @@ Return JSON: {"products":[...]}`;
     } else {
       // Check if this matches any ASIN entry by name similarity
       let matched = false;
-      for (const [k, v] of allProducts) {
+      for (const [, v] of allProducts) {
         if (v.asin && !v.name && p.productName) {
           // This could be the name for an ASIN we found
           v.name = p.productName;

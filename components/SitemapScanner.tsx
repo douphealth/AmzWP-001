@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useRef } from 'react';
-import { BlogPost, SitemapState, AppConfig, PostPriority } from '../types';
+import { BlogPost, SitemapState, AppConfig } from '../types';
 import { 
   fetchAndParseSitemap, 
   fetchPageContent, 
