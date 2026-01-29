@@ -44,7 +44,15 @@ All API keys are encrypted before storage using SecureStorage.
 
 ## Features
 - **Deep Intelligence Scan**: AI-powered content analysis to automatically detect monetization opportunities
+- **Complete Sitemap Discovery**: Fetches ALL URLs from sitemaps (no limits), including sitemap indexes with multiple sub-sitemaps
 - **Manual Product Add**: Add any Amazon product by entering ASIN or full Amazon URL
 - **Smart Auto-Deploy**: Automatically place products in optimal positions based on content relevance
 - **Visual Editor**: Drag-and-drop content blocks with product placement
 - **Multi-Provider AI**: Support for Google Gemini, OpenAI, Anthropic, Groq, and OpenRouter
+
+## Enterprise-Grade Reliability
+- Paginated WordPress API fetching (no 100-post limit)
+- Full sitemap index traversal (fetches ALL sub-sitemaps)
+- Batched concurrent requests with rate limiting
+- Duplicate URL detection and deduplication
+- Automatic retry with fallback strategies

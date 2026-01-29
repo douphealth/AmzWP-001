@@ -697,35 +697,67 @@ export const fetchAndParseSitemap = async (
     }
   }
 
-  // Strategy 1: WordPress REST API (if credentials available)
+  // Strategy 1: WordPress REST API (if credentials available) - PAGINATED to get ALL posts
   if (config.wpUrl && config.wpUser && config.wpAppPassword && targetUrl.includes(config.wpUrl)) {
     try {
       const wpBase = config.wpUrl.replace(/\/$/, '');
       const auth = btoa(`${config.wpUser}:${config.wpAppPassword}`);
       
-      const res = await fetch(
-        `${wpBase}/wp-json/wp/v2/posts?per_page=100&_fields=id,link,title,status,type`,
-        {
-          headers: { 'Authorization': `Basic ${auth}` },
-          signal: AbortSignal.timeout(15000),
-        }
-      );
+      const allPosts: BlogPost[] = [];
+      let page = 1;
+      const perPage = 100; // WordPress max
+      let hasMore = true;
+      
+      console.log('[fetchAndParseSitemap] Fetching ALL posts via WordPress REST API...');
+      
+      while (hasMore) {
+        const res = await fetch(
+          `${wpBase}/wp-json/wp/v2/posts?per_page=${perPage}&page=${page}&_fields=id,link,title,status,type`,
+          {
+            headers: { 'Authorization': `Basic ${auth}` },
+            signal: AbortSignal.timeout(30000),
+          }
+        );
 
-      if (res.ok) {
+        if (!res.ok) {
+          if (page === 1) throw new Error('WP API request failed');
+          break; // No more pages
+        }
+        
         const data = await res.json();
-        return data.map((p: any, idx: number) => ({
-          id: p.id || Date.now() + idx,
+        
+        if (!Array.isArray(data) || data.length === 0) {
+          hasMore = false;
+          break;
+        }
+        
+        const posts: BlogPost[] = data.map((p: any, idx: number) => ({
+          id: p.id || Date.now() + (page * perPage) + idx,
           title: p.title?.rendered || 'Untitled',
           url: p.link,
-          status: p.status === 'publish' ? 'publish' : 'draft',
+          status: (p.status === 'publish' ? 'publish' : 'draft') as 'publish' | 'draft',
           content: '',
           priority: 'medium' as PostPriority,
           postType: 'unknown' as PostType,
           monetizationStatus: 'analyzing' as const,
         }));
+        
+        allPosts.push(...posts);
+        console.log(`[fetchAndParseSitemap] Page ${page}: fetched ${data.length} posts, total: ${allPosts.length}`);
+        
+        // Check if there are more pages
+        const totalPages = parseInt(res.headers.get('X-WP-TotalPages') || '1', 10);
+        if (page >= totalPages || data.length < perPage) {
+          hasMore = false;
+        } else {
+          page++;
+        }
       }
-    } catch {
-      console.warn('[fetchAndParseSitemap] WP API failed, trying sitemap XML...');
+      
+      console.log(`[fetchAndParseSitemap] WordPress API: Retrieved ${allPosts.length} total posts`);
+      return allPosts;
+    } catch (err) {
+      console.warn('[fetchAndParseSitemap] WP API failed, trying sitemap XML...', err);
     }
   }
 
@@ -757,17 +789,57 @@ export const fetchAndParseSitemap = async (
     throw new ValidationError('Invalid Sitemap XML Format. Please provide a valid sitemap URL.');
   }
 
-  // Handle Sitemap Index (recursive)
+  // Handle Sitemap Index (recursive) - Fetch ALL sub-sitemaps
   const sitemapLocs = Array.from(doc.querySelectorAll('sitemap loc'));
   if (sitemapLocs.length > 0) {
-    // Prefer post-sitemap if available
-    const postSitemap = sitemapLocs.find(n => 
-      (n.textContent || '').toLowerCase().includes('post-sitemap')
-    );
-    const subSitemapUrl = postSitemap?.textContent || sitemapLocs[0].textContent;
+    console.log(`[fetchAndParseSitemap] Found sitemap index with ${sitemapLocs.length} sub-sitemaps`);
     
-    if (subSitemapUrl && subSitemapUrl !== targetUrl) {
-      return fetchAndParseSitemap(subSitemapUrl, config);
+    // Collect all sub-sitemap URLs
+    const subSitemapUrls: string[] = [];
+    
+    for (const locNode of sitemapLocs) {
+      const subUrl = locNode.textContent?.trim();
+      if (subUrl && subUrl !== targetUrl) {
+        // Prioritize post-related sitemaps, skip image/video sitemaps
+        const lowerUrl = subUrl.toLowerCase();
+        if (!lowerUrl.includes('image') && !lowerUrl.includes('video') && !lowerUrl.includes('news')) {
+          subSitemapUrls.push(subUrl);
+        }
+      }
+    }
+    
+    if (subSitemapUrls.length > 0) {
+      console.log(`[fetchAndParseSitemap] Fetching ${subSitemapUrls.length} sub-sitemaps...`);
+      
+      // Fetch all sub-sitemaps in parallel with concurrency limit
+      const allPosts: BlogPost[] = [];
+      const seenUrls = new Set<string>();
+      
+      // Process in batches to avoid overwhelming the server
+      const batchSize = 5;
+      for (let i = 0; i < subSitemapUrls.length; i += batchSize) {
+        const batch = subSitemapUrls.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+          batch.map(url => fetchAndParseSitemap(url, config))
+        );
+        
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            for (const post of result.value) {
+              // Deduplicate by URL
+              if (!seenUrls.has(post.url.toLowerCase())) {
+                seenUrls.add(post.url.toLowerCase());
+                allPosts.push(post);
+              }
+            }
+          }
+        }
+        
+        console.log(`[fetchAndParseSitemap] Processed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(subSitemapUrls.length / batchSize)}, total URLs: ${allPosts.length}`);
+      }
+      
+      console.log(`[fetchAndParseSitemap] Sitemap index: Retrieved ${allPosts.length} total unique URLs`);
+      return allPosts;
     }
   }
 
