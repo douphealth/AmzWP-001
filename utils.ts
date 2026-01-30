@@ -104,663 +104,58 @@ interface ConnectionTestResult {
 }
 
 // ============================================================================
-// CORS PROXY CONFIGURATION
+// CORS PROXY SYSTEM - ENTERPRISE GRADE
 // ============================================================================
 
-const CORS_PROXIES: ProxyConfig[] = [
+const CORS_PROXIES = [
   {
-    name: 'allorigins',
+    name: 'allorigins-raw',
     transform: (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    timeout: 12000,
-    priority: 1,
+    timeout: 15000,
   },
   {
     name: 'corsproxy-io',
     transform: (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    timeout: 12000,
-    priority: 2,
-  },
-  {
-    name: 'codetabs',
-    transform: (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
     timeout: 15000,
-    priority: 3,
   },
   {
     name: 'thingproxy',
     transform: (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
     timeout: 15000,
-    priority: 4,
   },
   {
-    name: 'cors-anywhere-alt',
+    name: 'codetabs',
+    transform: (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    timeout: 20000,
+  },
+  {
+    name: 'allorigins-get',
     transform: (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    timeout: 12000,
-    priority: 5,
-    headers: { 'Accept': 'application/json' },
+    timeout: 15000,
+    parseJson: true,
   },
 ];
 
-// Proxy performance tracking
 const proxyLatencyMap = new Map<string, number>();
 const proxyFailureCount = new Map<string, number>();
 const proxySuccessCount = new Map<string, number>();
 
-// ============================================================================
-// REQUEST DEDUPLICATION SYSTEM
-// ============================================================================
-
-const pendingRequests = new Map<string, Promise<any>>();
-const requestTimestamps = new Map<string, number>();
-
-/**
- * Deduplicated fetch - prevents duplicate concurrent requests
- */
-const deduplicatedFetch = async <T>(
-  key: string,
-  fetcher: () => Promise<T>,
-  maxAge: number = 5000
-): Promise<T> => {
-  const now = Date.now();
-  const lastRequest = requestTimestamps.get(key);
-
-  // If request is in flight, return existing promise
-  if (pendingRequests.has(key)) {
-    console.log(`[Dedup] Reusing in-flight request: ${key.substring(0, 50)}...`);
-    return pendingRequests.get(key) as Promise<T>;
-  }
-
-  // If recently completed, skip
-  if (lastRequest && now - lastRequest < maxAge) {
-    console.log(`[Dedup] Skipping recently completed request: ${key.substring(0, 50)}...`);
-  }
-
-  const promise = fetcher()
-    .then(result => {
-      requestTimestamps.set(key, Date.now());
-      return result;
-    })
-    .finally(() => {
-      pendingRequests.delete(key);
-    });
-
-  pendingRequests.set(key, promise);
-  return promise;
-};
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-/**
- * Sleep for specified milliseconds
- */
-const sleep = (ms: number): Promise<void> => 
-  new Promise(resolve => setTimeout(resolve, ms));
-
-/**
- * Generate a hash from string (for cache keys)
- */
-const hashString = (str: string): string => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36);
-};
-
-/**
- * Truncate string to specified length
- */
-const truncate = (str: string, maxLength: number): string => {
-  if (str.length <= maxLength) return str;
-  return str.substring(0, maxLength - 3) + '...';
-};
-
-/**
- * Clean HTML tags from string
- */
-const stripHtml = (html: string): string => {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-};
-
-/**
- * Extract domain from URL
- */
-const extractDomain = (url: string): string => {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch {
-    return url.replace(/^https?:\/\//, '').split('/')[0];
-  }
-};
-
-/**
- * Check if URL is a media file
- */
-const isMediaFile = (url: string): boolean => {
-  const mediaExtensions = /\.(jpg|jpeg|png|gif|webp|svg|ico|pdf|mp4|mp3|wav|avi|mov|wmv|flv|zip|rar|tar|gz|doc|docx|xls|xlsx|ppt|pptx|exe|dmg|iso)$/i;
-  return mediaExtensions.test(url);
-};
-
-/**
- * Validate URL format
- */
-const isValidUrl = (url: string): boolean => {
-  try {
-    const urlObj = new URL(url);
-    return ['http:', 'https:'].includes(urlObj.protocol);
-  } catch {
-    return false;
-  }
-};
-
-// ============================================================================
-// RETRY LOGIC WITH EXPONENTIAL BACKOFF
-// ============================================================================
-
-interface RetryOptions {
-  maxRetries?: number;
-  baseDelay?: number;
-  maxDelay?: number;
-  shouldRetry?: (error: any, attempt: number) => boolean;
-  onRetry?: (error: any, attempt: number, delay: number) => void;
-}
-
-const withRetry = async <T>(
-  fn: () => Promise<T>,
-  options: RetryOptions = {}
-): Promise<T> => {
-  const {
-    maxRetries = MAX_RETRIES,
-    baseDelay = RETRY_BASE_DELAY_MS,
-    maxDelay = 10000,
-    shouldRetry = () => true,
-    onRetry = () => {},
-  } = options;
-
-  let lastError: any;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error: any) {
-      lastError = error;
-
-      // Check if we should retry
-      if (!shouldRetry(error, attempt) || attempt === maxRetries - 1) {
-        throw error;
-      }
-
-      // Calculate delay with exponential backoff + jitter
-      const delay = Math.min(
-        baseDelay * Math.pow(2, attempt) + Math.random() * 1000,
-        maxDelay
-      );
-
-      onRetry(error, attempt, delay);
-      console.log(`[Retry] Attempt ${attempt + 1} failed, retrying in ${Math.round(delay)}ms...`);
-      
-      await sleep(delay);
-    }
-  }
-
-  throw lastError;
-};
-
-// ============================================================================
-// SECURE STORAGE SYSTEM
-// ============================================================================
-
-export const SecureStorage = {
-  /**
-   * Synchronous encryption using Base64 (for React state initialization)
-   */
-  encryptSync: (text: string): string => {
-    if (!text) return '';
-    try {
-      // Use URI encoding to handle special characters
-      return btoa(encodeURIComponent(text).replace(/%([0-9A-F]{2})/g,
-        (_, p1) => String.fromCharCode(parseInt(p1, 16))
-      ));
-    } catch (error) {
-      console.warn('[SecureStorage] Sync encryption failed:', error);
-      return '';
-    }
-  },
-
-  /**
-   * Synchronous decryption using Base64 (for React state initialization)
-   */
-  decryptSync: (cipher: string): string => {
-    if (!cipher) return '';
-    try {
-      return decodeURIComponent(
-        atob(cipher).split('').map(c =>
-          '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-        ).join('')
-      );
-    } catch (error) {
-      console.warn('[SecureStorage] Sync decryption failed:', error);
-      return '';
-    }
-  },
-
-  /**
-   * Async encryption using Web Crypto API (for sensitive operations)
-   */
-  encrypt: async (text: string): Promise<string> => {
-    if (!text) return '';
-
-    // Check for Web Crypto API support
-    if (typeof window !== 'undefined' && window.crypto?.subtle) {
-      try {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(text);
-        
-        // Generate a random key
-        const key = await window.crypto.subtle.generateKey(
-          { name: 'AES-GCM', length: 256 },
-          true,
-          ['encrypt', 'decrypt']
-        );
-        
-        // Generate random IV
-        const iv = window.crypto.getRandomValues(new Uint8Array(12));
-        
-        // Encrypt the data
-        const encrypted = await window.crypto.subtle.encrypt(
-          { name: 'AES-GCM', iv },
-          key,
-          data
-        );
-        
-        // Export the key
-        const exportedKey = await window.crypto.subtle.exportKey('raw', key);
-        
-        // Combine IV + Key + Encrypted data
-        const combined = new Uint8Array([
-          ...iv,
-          ...new Uint8Array(exportedKey),
-          ...new Uint8Array(encrypted),
-        ]);
-        
-        return btoa(String.fromCharCode(...combined));
-      } catch (error) {
-        console.warn('[SecureStorage] Web Crypto encryption failed, using sync fallback:', error);
-      }
-    }
-
-    // Fallback to sync encryption
-    return SecureStorage.encryptSync(text);
-  },
-
-  /**
-   * Async decryption (with fallback to sync)
-   */
-  decrypt: async (cipher: string): Promise<string> => {
-    if (!cipher) return '';
-
-    // Try sync decryption first (for backward compatibility)
-    try {
-      const syncResult = SecureStorage.decryptSync(cipher);
-      if (syncResult) return syncResult;
-    } catch {
-      // Continue to async attempt if sync fails
-    }
-
-    // If Web Crypto was used, we'd need the same key to decrypt
-    // For simplicity, we use sync encryption which is reversible
-    return '';
-  },
-
-  /**
-   * Check if a value is encrypted
-   */
-  isEncrypted: (value: string): boolean => {
-    if (!value) return false;
-    try {
-      atob(value);
-      return true;
-    } catch {
-      return false;
-    }
-  },
-};
-
-// ============================================================================
-// INTELLIGENT CACHE SYSTEM
-// ============================================================================
-
-export const IntelligenceCache = {
-  version: CACHE_VERSION,
-
-  /**
-   * Set a value in cache with optional TTL
-   */
-  set: <T>(key: string, data: T, ttl?: number): void => {
-    try {
-      const entry: CacheEntry<T> = {
-        data,
-        timestamp: Date.now(),
-        version: IntelligenceCache.version,
-        ttl: ttl || CACHE_TTL_MS,
-      };
-      localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(entry));
-    } catch (error) {
-      console.warn('[Cache] Failed to set:', error);
-      // Try to clear old entries if storage is full
-      IntelligenceCache.cleanup();
-    }
-  },
-
-  /**
-   * Get a value from cache (returns null if expired or invalid)
-   */
-  get: <T>(key: string): T | null => {
-    try {
-      const raw = localStorage.getItem(`${CACHE_PREFIX}${key}`);
-      if (!raw) return null;
-
-      const entry: CacheEntry<T> = JSON.parse(raw);
-
-      // Version check
-      if (entry.version !== IntelligenceCache.version) {
-        localStorage.removeItem(`${CACHE_PREFIX}${key}`);
-        return null;
-      }
-
-      // TTL check
-      const ttl = entry.ttl || CACHE_TTL_MS;
-      if (Date.now() - entry.timestamp > ttl) {
-        localStorage.removeItem(`${CACHE_PREFIX}${key}`);
-        return null;
-      }
-
-      return entry.data;
-    } catch {
-      return null;
-    }
-  },
-
-  /**
-   * Remove a specific key from cache
-   */
-  remove: (key: string): void => {
-    localStorage.removeItem(`${CACHE_PREFIX}${key}`);
-  },
-
-  /**
-   * Get analysis results from cache
-   */
-  getAnalysis: (contentHash: string): { products: ProductDetails[]; comparison?: ComparisonData } | null => {
-    return IntelligenceCache.get(`analysis_${contentHash}`);
-  },
-
-  /**
-   * Set analysis results in cache
-   */
-  setAnalysis: (contentHash: string, data: { products: ProductDetails[]; comparison?: ComparisonData }): void => {
-    IntelligenceCache.set(`analysis_${contentHash}`, data, CACHE_TTL_MS);
-  },
-
-  /**
-   * Get product data from cache
-   */
-  getProduct: (asin: string): ProductDetails | null => {
-    return IntelligenceCache.get(`product_${asin}`);
-  },
-
-  /**
-   * Set product data in cache
-   */
-  setProduct: (asin: string, product: ProductDetails): void => {
-    IntelligenceCache.set(`product_${asin}`, product, CACHE_TTL_MS);
-  },
-
-  /**
-   * Get sitemap data from cache
-   */
-  getSitemap: (url: string): BlogPost[] | null => {
-    const key = `sitemap_${hashString(url.toLowerCase())}`;
-    return IntelligenceCache.get(key);
-  },
-
-  /**
-   * Set sitemap data in cache
-   */
-  setSitemap: (url: string, posts: BlogPost[]): void => {
-    const key = `sitemap_${hashString(url.toLowerCase())}`;
-    IntelligenceCache.set(key, posts, CACHE_TTL_SHORT_MS);
-  },
-
-  /**
-   * Clear all cache entries
-   */
-  clear: (): void => {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(CACHE_PREFIX)) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-    console.log(`[Cache] Cleared ${keysToRemove.length} entries`);
-  },
-
-  /**
-   * Clean up expired cache entries
-   */
-  cleanup: (): void => {
-    const now = Date.now();
-    const keysToRemove: string[] = [];
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(CACHE_PREFIX)) {
-        try {
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            const entry = JSON.parse(raw);
-            const ttl = entry.ttl || CACHE_TTL_MS;
-            if (
-              now - entry.timestamp > ttl || 
-              entry.version !== IntelligenceCache.version
-            ) {
-              keysToRemove.push(key);
-            }
-          }
-        } catch {
-          keysToRemove.push(key);
-        }
-      }
-    }
-
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-    if (keysToRemove.length > 0) {
-      console.log(`[Cache] Cleaned up ${keysToRemove.length} expired entries`);
-    }
-  },
-
-  /**
-   * Get cache statistics
-   */
-  getStats: (): { entries: number; size: number; oldest: number } => {
-    let entries = 0;
-    let size = 0;
-    let oldest = Date.now();
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(CACHE_PREFIX)) {
-        entries++;
-        const raw = localStorage.getItem(key);
-        if (raw) {
-          size += raw.length;
-          try {
-            const entry = JSON.parse(raw);
-            if (entry.timestamp < oldest) {
-              oldest = entry.timestamp;
-            }
-          } catch {}
-        }
-      }
-    }
-
-    return { entries, size, oldest };
-  },
-};
-
-// ============================================================================
-// SMART PROXY FETCH SYSTEM
-// ============================================================================
-
-/**
- * Get proxies sorted by performance (fastest first, fewest failures)
- */
-const getSortedProxies = (): ProxyConfig[] => {
+const getSortedProxies = () => {
   return [...CORS_PROXIES].sort((a, b) => {
     const failuresA = proxyFailureCount.get(a.name) ?? 0;
     const failuresB = proxyFailureCount.get(b.name) ?? 0;
-    
-    // Prioritize proxies with fewer failures
-    if (failuresA !== failuresB) {
-      return failuresA - failuresB;
-    }
-    
-    // Then by latency
+    if (failuresA !== failuresB) return failuresA - failuresB;
     const latencyA = proxyLatencyMap.get(a.name) ?? 999999;
     const latencyB = proxyLatencyMap.get(b.name) ?? 999999;
-    
     return latencyA - latencyB;
   });
 };
 
-// NOTE: REMOVED DUPLICATE resetProxyStats function that was here (around line 651)
-// The exported version is at the bottom of the file
-
-/**
- * Fetch with smart proxy rotation and automatic failover
- */
-export const fetchWithSmartProxy = async (
-  url: string,
-  options: { 
-    timeout?: number; 
-    signal?: AbortSignal;
-    acceptTypes?: string;
-    validateResponse?: (text: string) => boolean;
-  } = {}
-): Promise<string> => {
-  const { 
-    timeout = SITEMAP_FETCH_TIMEOUT_MS, 
-    signal,
-    acceptTypes = 'text/xml, application/xml, text/html, */*',
-    validateResponse = (text) => text.length > 50 && text.includes('<'),
-  } = options;
-
-  const sortedProxies = getSortedProxies();
-  const errors: string[] = [];
-
-  for (const proxy of sortedProxies) {
-    const startTime = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(), 
-      proxy.timeout || timeout
-    );
-
-    try {
-      const proxyUrl = proxy.transform(url);
-      console.log(`[Proxy] Trying ${proxy.name}: ${url.substring(0, 60)}...`);
-
-      const response = await fetch(proxyUrl, {
-        signal: signal || controller.signal,
-        headers: {
-          'Accept': acceptTypes,
-          'Cache-Control': 'no-cache',
-          ...proxy.headers,
-        },
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      let text = await response.text();
-
-      // Handle allorigins JSON wrapper
-      if (proxy.name === 'cors-anywhere-alt' && text.startsWith('{')) {
-        try {
-          const json = JSON.parse(text);
-          text = json.contents || text;
-        } catch {}
-      }
-
-      // Validate response
-      if (!validateResponse(text)) {
-        throw new Error('Invalid or empty response');
-      }
-
-      // Record success metrics
-      const latency = Date.now() - startTime;
-      proxyLatencyMap.set(proxy.name, latency);
-      proxyFailureCount.set(proxy.name, 0);
-      proxySuccessCount.set(
-        proxy.name, 
-        (proxySuccessCount.get(proxy.name) ?? 0) + 1
-      );
-
-      console.log(`[Proxy] ${proxy.name} succeeded in ${latency}ms`);
-      return text;
-
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-
-      const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
-      errors.push(`${proxy.name}: ${errorMsg}`);
-      console.warn(`[Proxy] ${proxy.name} failed: ${errorMsg}`);
-
-      // Track failures
-      const currentFailures = proxyFailureCount.get(proxy.name) ?? 0;
-      proxyFailureCount.set(proxy.name, currentFailures + 1);
-      
-      // Mark with high latency to deprioritize
-      proxyLatencyMap.set(proxy.name, 999999);
-
-      continue;
-    }
-  }
-
-  throw new Error(`All proxies failed:\n${errors.join('\n')}`);
-};
-
-/**
- * Fetch with timeout (no proxy)
- */
-const fetchWithTimeout = async (
-  url: string,
-  timeout: number,
-  options: RequestInit = {}
-): Promise<Response> => {
+const fetchWithTimeout = async (url: string, timeout: number, options: RequestInit = {}): Promise<Response> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
-
   try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
+    const response = await fetch(url, { ...options, signal: controller.signal });
     clearTimeout(timeoutId);
     return response;
   } catch (error) {
@@ -769,309 +164,150 @@ const fetchWithTimeout = async (
   }
 };
 
-// ============================================================================
-// SITEMAP URL NORMALIZATION
-// ============================================================================
+export const fetchWithSmartProxy = async (url: string, options: { timeout?: number } = {}): Promise<string> => {
+  const { timeout = 20000 } = options;
+  const sortedProxies = getSortedProxies();
+  const errors: string[] = [];
 
-/**
- * Generate possible sitemap URLs from a domain or partial URL
- */
+  // Try direct fetch first
+  try {
+    console.log(`[Fetch] Direct: ${url.substring(0, 60)}...`);
+    const response = await fetchWithTimeout(url, 10000, {
+      headers: { 'Accept': 'text/xml, application/xml, text/html, */*' },
+    });
+    if (response.ok) {
+      const text = await response.text();
+      if (text && text.length > 50 && text.includes('<')) {
+        console.log(`[Fetch] Direct succeeded!`);
+        return text;
+      }
+    }
+  } catch (e: any) {
+    console.log(`[Fetch] Direct failed: ${e.message}`);
+  }
+
+  // Try each proxy
+  for (const proxy of sortedProxies) {
+    const startTime = Date.now();
+    try {
+      const proxyUrl = proxy.transform(url);
+      console.log(`[Proxy] ${proxy.name}: ${url.substring(0, 50)}...`);
+
+      const response = await fetchWithTimeout(proxyUrl, proxy.timeout || timeout, {
+        headers: { 'Accept': 'text/xml, application/xml, text/html, application/json, */*' },
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      let text = await response.text();
+
+      if ((proxy as any).parseJson && text.startsWith('{')) {
+        try {
+          const json = JSON.parse(text);
+          text = json.contents || json.data || text;
+        } catch {}
+      }
+
+      if (!text || text.length < 50) throw new Error('Empty response');
+
+      const latency = Date.now() - startTime;
+      proxyLatencyMap.set(proxy.name, latency);
+      proxyFailureCount.set(proxy.name, 0);
+      proxySuccessCount.set(proxy.name, (proxySuccessCount.get(proxy.name) ?? 0) + 1);
+      console.log(`[Proxy] ${proxy.name} OK in ${latency}ms`);
+      return text;
+
+    } catch (error: any) {
+      const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
+      errors.push(`${proxy.name}: ${errorMsg}`);
+      console.warn(`[Proxy] ${proxy.name} FAIL: ${errorMsg}`);
+      proxyFailureCount.set(proxy.name, (proxyFailureCount.get(proxy.name) ?? 0) + 1);
+      proxyLatencyMap.set(proxy.name, 999999);
+    }
+  }
+
+  throw new Error(`All proxies failed: ${errors.join(', ')}`);
+};
+
 export const normalizeSitemapUrl = (input: string): string[] => {
   let url = input.trim().replace(/\/+$/, '');
-
-  // Add protocol if missing
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = 'https://' + url;
   }
-
-  // If already a sitemap URL, return it first
-  if (url.includes('sitemap') && (url.endsWith('.xml') || url.includes('.xml'))) {
+  if (url.includes('sitemap') && url.endsWith('.xml')) {
     return [url];
   }
-
-  // Extract domain and generate common sitemap patterns
+  let baseUrl: string;
   try {
     const urlObj = new URL(url);
-    const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-
-    // Common WordPress and general sitemap patterns
-    return [
-      `${baseUrl}/sitemap.xml`,
-      `${baseUrl}/sitemap_index.xml`,
-      `${baseUrl}/wp-sitemap.xml`,
-      `${baseUrl}/post-sitemap.xml`,
-      `${baseUrl}/page-sitemap.xml`,
-      `${baseUrl}/sitemap-posts.xml`,
-      `${baseUrl}/news-sitemap.xml`,
-      `${baseUrl}/sitemap/sitemap-index.xml`,
-      `${baseUrl}/sitemaps/sitemap.xml`,
-      `${baseUrl}/sitemap1.xml`,
-      `${baseUrl}/sitemap-1.xml`,
-      `${baseUrl}/sitemap_1.xml`,
-      `${baseUrl}/feed/sitemap`,
-      `${baseUrl}/robots.txt`, // Can contain sitemap location
-    ];
+    baseUrl = `${urlObj.protocol}//${urlObj.host}`;
   } catch {
-    const cleanDomain = url.replace(/^https?:\/\//, '');
-    return [`https://${cleanDomain}/sitemap.xml`];
+    baseUrl = url;
   }
+  return [
+    `${baseUrl}/sitemap.xml`,
+    `${baseUrl}/sitemap_index.xml`,
+    `${baseUrl}/wp-sitemap.xml`,
+    `${baseUrl}/sitemap-index.xml`,
+    `${baseUrl}/post-sitemap.xml`,
+    `${baseUrl}/page-sitemap.xml`,
+    `${baseUrl}/sitemap-posts.xml`,
+    `${baseUrl}/sitemap/sitemap.xml`,
+    `${baseUrl}/sitemaps/sitemap.xml`,
+    `${baseUrl}/sitemap1.xml`,
+  ];
 };
 
-// ============================================================================
-// SITEMAP XML PARSING
-// ============================================================================
-
-/**
- * Parse sitemap XML content and extract URLs
- */
 export const parseSitemapXml = (xml: string): string[] => {
   const urls: string[] = [];
-
-  // Check if this is a sitemap index (contains <sitemap> tags)
-  const sitemapIndexMatches = xml.matchAll(/<sitemap>\s*<loc>([^<]+)<\/loc>/gi);
+  const sitemapMatches = xml.matchAll(/<sitemap[^>]*>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/sitemap>/gi);
   const subSitemaps: string[] = [];
-
-  for (const match of sitemapIndexMatches) {
-    const sitemapUrl = match[1].trim();
-    if (sitemapUrl && (sitemapUrl.includes('sitemap') || sitemapUrl.endsWith('.xml'))) {
-      subSitemaps.push(sitemapUrl);
-    }
+  for (const match of sitemapMatches) {
+    const loc = match[1]?.trim();
+    if (loc) subSitemaps.push(loc);
   }
-
-  // If we found sub-sitemaps, return those for further processing
   if (subSitemaps.length > 0) {
     return subSitemaps;
   }
-
-  // Parse as regular sitemap with <url><loc> entries
-  const urlMatches = xml.matchAll(/<url>\s*<loc>([^<]+)<\/loc>/gi);
-
+  const urlMatches = xml.matchAll(/<url[^>]*>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/url>/gi);
   for (const match of urlMatches) {
-    const loc = match[1].trim();
-    if (loc && !isMediaFile(loc)) {
+    const loc = match[1]?.trim();
+    if (loc && !/\.(jpg|jpeg|png|gif|webp|svg|pdf|mp4|mp3|zip)$/i.test(loc)) {
       urls.push(loc);
     }
   }
-
-  // Fallback: extract any <loc> tags
   if (urls.length === 0) {
-    const fallbackMatches = xml.matchAll(/<loc>([^<]+)<\/loc>/gi);
-    for (const match of fallbackMatches) {
-      const loc = match[1].trim();
-      if (
-        loc.startsWith('http') && 
-        !isMediaFile(loc) && 
-        !loc.includes('sitemap')
-      ) {
+    const locMatches = xml.matchAll(/<loc>([^<]+)<\/loc>/gi);
+    for (const match of locMatches) {
+      const loc = match[1]?.trim();
+      if (loc && loc.startsWith('http') && !/\.(jpg|jpeg|png|gif|webp|svg|pdf)$/i.test(loc)) {
         urls.push(loc);
       }
     }
   }
-
-  // Remove duplicates
   return [...new Set(urls)];
 };
 
-/**
- * Extract sitemap URL from robots.txt
- */
-const extractSitemapFromRobots = (robotsTxt: string): string[] => {
-  const sitemaps: string[] = [];
-  const lines = robotsTxt.split('\n');
-
-  for (const line of lines) {
-    const trimmed = line.trim().toLowerCase();
-    if (trimmed.startsWith('sitemap:')) {
-      const url = line.substring(line.indexOf(':') + 1).trim();
-      if (url && isValidUrl(url)) {
-        sitemaps.push(url);
-      }
-    }
-  }
-
-  return sitemaps;
-};
-
-// ============================================================================
-// TITLE EXTRACTION
-// ============================================================================
-
-/**
- * Extract a readable title from URL slug
- */
 const extractTitleFromUrl = (url: string): string => {
   try {
     const urlObj = new URL(url);
-    const path = urlObj.pathname;
-    const segments = path.split('/').filter(s => s.length > 0);
+    const segments = urlObj.pathname.split('/').filter(s => s);
     const lastSegment = segments[segments.length - 1] || '';
-
-    // Remove common file extensions
-    let title = lastSegment.replace(/\.(html?|php|aspx?)$/i, '');
-
-    // Convert slug to title case
-    title = title
+    return lastSegment
       .replace(/[-_]/g, ' ')
+      .replace(/\.\w+$/, '')
       .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
       .join(' ')
-      .trim();
-
-    return title || 'Untitled Page';
+      .trim() || 'Untitled Page';
   } catch {
     return 'Untitled Page';
   }
 };
 
-// ============================================================================
-// MAIN SITEMAP FETCH AND PARSE FUNCTION
-// ============================================================================
-
-/**
- * Fetch and parse sitemap, returning discovered blog posts
- */
-export const fetchAndParseSitemap = async (
-  inputUrl: string,
-  config: AppConfig
-): Promise<BlogPost[]> => {
-  console.log('[Sitemap] Starting discovery for:', inputUrl);
-
-  // Check cache first
-  const cached = IntelligenceCache.getSitemap(inputUrl);
-  if (cached && cached.length > 0) {
-    console.log('[Sitemap] Returning cached results:', cached.length);
-    return cached;
-  }
-
-  const sitemapUrls = normalizeSitemapUrl(inputUrl);
-  const allPosts: BlogPost[] = [];
-  const seenUrls = new Set<string>();
-  let foundValidSitemap = false;
-
-  // Try each potential sitemap URL
-  for (const sitemapUrl of sitemapUrls) {
-    if (foundValidSitemap && allPosts.length > 0) break;
-
-    try {
-      console.log('[Sitemap] Trying:', sitemapUrl);
-
-      // Handle robots.txt specially
-      if (sitemapUrl.endsWith('robots.txt')) {
-        try {
-          const robotsTxt = await fetchWithSmartProxy(sitemapUrl, {
-            timeout: 10000,
-            validateResponse: (text) => text.length > 10,
-          });
-          const robotsSitemaps = extractSitemapFromRobots(robotsTxt);
-          if (robotsSitemaps.length > 0) {
-            // Add found sitemaps to the front of the queue
-            sitemapUrls.unshift(...robotsSitemaps);
-          }
-        } catch {
-          console.log('[Sitemap] Could not fetch robots.txt');
-        }
-        continue;
-      }
-
-      const xml = await deduplicatedFetch(
-        `fetch_sitemap_${sitemapUrl}`,
-        () => fetchWithSmartProxy(sitemapUrl, { 
-          timeout: SITEMAP_FETCH_TIMEOUT_MS,
-          validateResponse: (text) => text.includes('<') && text.includes('loc'),
-        })
-      );
-
-      const urls = parseSitemapXml(xml);
-      console.log(`[Sitemap] Found ${urls.length} URLs in ${sitemapUrl}`);
-
-      if (urls.length === 0) continue;
-
-      // Check if these are sub-sitemaps (sitemap index)
-      const isIndex = urls.every(u => 
-        u.includes('sitemap') || u.endsWith('.xml')
-      );
-
-      if (isIndex && urls.length < 100) {
-        // Recursively fetch sub-sitemaps with rate limiting
-        console.log('[Sitemap] Detected sitemap index, fetching sub-sitemaps...');
-
-        for (const subSitemapUrl of urls.slice(0, 15)) {
-          try {
-            await sleep(200); // Rate limiting
-            const subXml = await fetchWithSmartProxy(subSitemapUrl, { 
-              timeout: 15000,
-            });
-            const subUrls = parseSitemapXml(subXml);
-
-            for (const pageUrl of subUrls) {
-              const normalizedUrl = pageUrl.toLowerCase();
-              if (!seenUrls.has(normalizedUrl)) {
-                seenUrls.add(normalizedUrl);
-                allPosts.push(createBlogPostFromUrl(pageUrl, seenUrls.size));
-              }
-            }
-          } catch (subError) {
-            console.warn('[Sitemap] Sub-sitemap fetch failed:', subSitemapUrl);
-          }
-        }
-        foundValidSitemap = true;
-      } else {
-        // Regular sitemap with page URLs
-        for (const pageUrl of urls) {
-          const normalizedUrl = pageUrl.toLowerCase();
-          if (!seenUrls.has(normalizedUrl)) {
-            seenUrls.add(normalizedUrl);
-            allPosts.push(createBlogPostFromUrl(pageUrl, seenUrls.size));
-          }
-        }
-        foundValidSitemap = true;
-      }
-
-    } catch (error: any) {
-      console.warn(`[Sitemap] Failed to fetch ${sitemapUrl}:`, error.message);
-      continue;
-    }
-  }
-
-  if (allPosts.length === 0) {
-    throw new Error(
-      'No sitemap found or sitemap is empty. ' +
-      'Try entering the full sitemap URL (e.g., yoursite.com/sitemap.xml) ' +
-      'or use "Add URL Manually" to add individual pages.'
-    );
-  }
-
-  // Cache results
-  IntelligenceCache.setSitemap(inputUrl, allPosts);
-
-  console.log(`[Sitemap] Discovery complete: ${allPosts.length} posts found`);
-  return allPosts;
-};
-
-// ============================================================================
-// BLOG POST CREATION
-// ============================================================================
-
-/**
- * Create a BlogPost object from URL
- */
-export const createBlogPostFromUrl = (
-  url: string,
-  index: number | Set<string | number>
-): BlogPost => {
-  let id: number;
-  
-  if (typeof index === 'number') {
-    id = Date.now() + index + Math.floor(Math.random() * 1000);
-  } else {
-    // Generate unique ID not in the set
-    do {
-      id = Date.now() + Math.floor(Math.random() * 100000);
-    } while (index.has(id));
-  }
-
+export const createBlogPostFromUrl = (url: string, index: number): BlogPost => {
   return {
-    id,
+    id: Date.now() + index + Math.floor(Math.random() * 10000),
     title: extractTitleFromUrl(url),
     url: url.trim(),
     postType: 'post',
@@ -1080,57 +316,139 @@ export const createBlogPostFromUrl = (
   };
 };
 
-// ============================================================================
-// URL VALIDATION
-// ============================================================================
+export const fetchAndParseSitemap = async (inputUrl: string, config: AppConfig): Promise<BlogPost[]> => {
+  console.log('[Sitemap] Starting for:', inputUrl);
 
-/**
- * Validate and normalize a manually entered URL
- */
-export const validateManualUrl = (input: string): {
-  isValid: boolean;
-  normalizedUrl: string;
-  error?: string;
-} => {
-  const trimmed = input.trim();
+  const sitemapUrls = normalizeSitemapUrl(inputUrl);
+  const allPosts: BlogPost[] = [];
+  const seenUrls = new Set<string>();
+  let foundValid = false;
+  let lastError = '';
 
-  if (!trimmed) {
-    return { isValid: false, normalizedUrl: '', error: 'URL cannot be empty' };
+  for (const sitemapUrl of sitemapUrls) {
+    if (foundValid) break;
+
+    try {
+      console.log(`[Sitemap] Trying: ${sitemapUrl}`);
+      const xml = await fetchWithSmartProxy(sitemapUrl, { timeout: 25000 });
+
+      if (!xml.includes('<') || (!xml.includes('url') && !xml.includes('sitemap') && !xml.includes('loc'))) {
+        continue;
+      }
+
+      const urls = parseSitemapXml(xml);
+      console.log(`[Sitemap] Found ${urls.length} URLs`);
+
+      if (urls.length === 0) continue;
+
+      const isIndex = urls.every(u => u.includes('sitemap') || u.endsWith('.xml'));
+
+      if (isIndex && urls.length < 50) {
+        for (const subUrl of urls.slice(0, 10)) {
+          try {
+            await new Promise(r => setTimeout(r, 300));
+            const subXml = await fetchWithSmartProxy(subUrl, { timeout: 20000 });
+            const subUrls = parseSitemapXml(subXml);
+            for (const pageUrl of subUrls) {
+              const normalized = pageUrl.toLowerCase();
+              if (!seenUrls.has(normalized)) {
+                seenUrls.add(normalized);
+                allPosts.push(createBlogPostFromUrl(pageUrl, allPosts.length));
+              }
+            }
+          } catch {}
+        }
+        foundValid = allPosts.length > 0;
+      } else {
+        for (const pageUrl of urls) {
+          const normalized = pageUrl.toLowerCase();
+          if (!seenUrls.has(normalized)) {
+            seenUrls.add(normalized);
+            allPosts.push(createBlogPostFromUrl(pageUrl, allPosts.length));
+          }
+        }
+        foundValid = true;
+      }
+
+    } catch (error: any) {
+      lastError = error.message;
+      console.warn(`[Sitemap] Failed: ${sitemapUrl}`);
+    }
   }
 
-  let url = trimmed;
+  if (allPosts.length === 0) {
+    throw new Error(`No sitemap found. Tried ${sitemapUrls.length} URLs. Error: ${lastError}. Use "WP API" or "Add URL Manually".`);
+  }
 
-  // Add protocol if missing
+  console.log(`[Sitemap] SUCCESS: ${allPosts.length} posts`);
+  return allPosts;
+};
+
+export const fetchPostsFromWordPressAPI = async (config: AppConfig): Promise<BlogPost[]> => {
+  if (!config.wpUrl || !config.wpUser || !config.wpAppPassword) {
+    throw new Error('WordPress credentials not configured');
+  }
+
+  const apiBase = config.wpUrl.replace(/\/$/, '') + '/wp-json/wp/v2';
+  const auth = btoa(`${config.wpUser}:${config.wpAppPassword}`);
+  const posts: BlogPost[] = [];
+
+  const response = await fetchWithTimeout(`${apiBase}/posts?per_page=100&status=publish`, 15000, {
+    headers: { 'Authorization': `Basic ${auth}` },
+  });
+
+  if (!response.ok) throw new Error(`WordPress API error: ${response.status}`);
+
+  const wpPosts = await response.json();
+  for (const p of wpPosts) {
+    posts.push({
+      id: p.id,
+      title: p.title?.rendered?.replace(/<[^>]+>/g, '') || 'Untitled',
+      url: p.link,
+      postType: 'post',
+      priority: 'medium',
+      monetizationStatus: 'opportunity',
+    });
+  }
+
+  if (posts.length === 0) throw new Error('No posts found');
+  return posts;
+};
+
+export const validateManualUrl = (input: string): { isValid: boolean; normalizedUrl: string; error?: string } => {
+  const trimmed = input.trim();
+  if (!trimmed) return { isValid: false, normalizedUrl: '', error: 'URL cannot be empty' };
+  let url = trimmed;
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = 'https://' + url;
   }
-
   try {
-    const urlObj = new URL(url);
-
-    // Check for valid protocol
-    if (!['http:', 'https:'].includes(urlObj.protocol)) {
-      return { isValid: false, normalizedUrl: '', error: 'Invalid protocol (use http or https)' };
-    }
-
-    // Check for valid hostname
-    if (!urlObj.hostname || urlObj.hostname.length < 3) {
-      return { isValid: false, normalizedUrl: '', error: 'Invalid hostname' };
-    }
-
-    // Check for media files
-    if (isMediaFile(url)) {
-      return { isValid: false, normalizedUrl: '', error: 'Media files are not supported' };
-    }
-
-    // Normalize URL (remove trailing slash, lowercase hostname)
-    const normalized = `${urlObj.protocol}//${urlObj.hostname.toLowerCase()}${urlObj.pathname}${urlObj.search}`;
-
-    return { isValid: true, normalizedUrl: normalized };
+    new URL(url);
+    return { isValid: true, normalizedUrl: url };
   } catch {
     return { isValid: false, normalizedUrl: '', error: 'Invalid URL format' };
   }
 };
+
+export const getProxyStats = (): Record<string, any> => {
+  const stats: Record<string, any> = {};
+  for (const proxy of CORS_PROXIES) {
+    stats[proxy.name] = {
+      latency: proxyLatencyMap.get(proxy.name) ?? 'N/A',
+      failures: proxyFailureCount.get(proxy.name) ?? 0,
+      successes: proxySuccessCount.get(proxy.name) ?? 0,
+    };
+  }
+  return stats;
+};
+
+export const resetProxyStats = (): void => {
+  proxyLatencyMap.clear();
+  proxyFailureCount.clear();
+  proxySuccessCount.clear();
+};
+
+
 
 // ============================================================================
 // PAGE CONTENT FETCHING
