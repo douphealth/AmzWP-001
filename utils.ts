@@ -2227,11 +2227,11 @@ export const getProxyStats = (): Record<string, { latency: number; failures: num
 /**
  * Validate and normalize manually entered URL
  */
-export const validateManualUrl = (url: string): { valid: boolean; normalized?: string; error?: string } => {
+export const validateManualUrl = (url: string): { isValid: boolean; normalizedUrl?: string; error?: string } => {
   const trimmed = url.trim();
   
   if (!trimmed) {
-    return { valid: false, error: 'URL cannot be empty' };
+    return { isValid: false, error: 'URL cannot be empty' };
   }
   
   // Add https:// if no protocol
@@ -2244,11 +2244,11 @@ export const validateManualUrl = (url: string): { valid: boolean; normalized?: s
   try {
     const urlObj = new URL(normalized);
     if (!urlObj.hostname || urlObj.hostname.length < 3) {
-      return { valid: false, error: 'Invalid hostname' };
+      return { isValid: false, error: 'Invalid hostname' };
     }
-    return { valid: true, normalized };
+    return { isValid: true, normalizedUrl };
   } catch {
-    return { valid: false, error: 'Invalid URL format' };
+    return { isValid: false, error: 'Invalid URL format' };
   }
 };
 
