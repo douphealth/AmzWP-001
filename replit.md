@@ -13,11 +13,24 @@ AmzPilot is an Autonomous WordPress Monetization Engine that helps automate affi
 /
 ├── App.tsx           # Main application component
 ├── index.tsx         # React entry point
-├── index.html        # HTML template
+├── index.html        # HTML template with global CSS enhancements
 ├── types.ts          # TypeScript type definitions
-├── utils.ts          # Utility functions
+├── utils.ts          # Utility functions & encryption
 ├── constants.ts      # Application constants
 ├── components/       # React components
+│   ├── BatchProcessor.tsx  # Enterprise batch processing engine
+│   ├── DropZone.tsx        # Drag-and-drop visual indicators
+│   ├── PostEditor.tsx      # Visual editor with undo/redo
+│   ├── SitemapScanner.tsx  # Sitemap discovery with batch processing
+│   └── ...
+├── hooks/            # Custom React hooks
+│   ├── useHistory.ts       # Undo/redo state management
+│   ├── useKeyboardShortcuts.ts  # Keyboard shortcut handling
+│   ├── useDragAndDrop.ts   # Drag-and-drop functionality
+│   ├── useReducedMotion.ts # Accessibility motion detection
+│   └── index.ts            # Hook exports
+├── utils/            # Additional utilities
+│   └── aiCopywriter.ts     # AI-powered copy enhancement
 ├── vite.config.ts    # Vite configuration
 └── tsconfig.json     # TypeScript configuration
 ```
@@ -43,6 +56,8 @@ The app supports multiple AI providers with secure API key storage:
 All API keys are encrypted before storage using SecureStorage.
 
 ## Features
+
+### Core Features
 - **Deep Intelligence Scan**: AI-powered content analysis to automatically detect monetization opportunities
 - **Complete Sitemap Discovery**: Fetches ALL URLs from sitemaps (no limits), including sitemap indexes with multiple sub-sitemaps
 - **Manual Product Add**: Add any Amazon product by entering ASIN or full Amazon URL
@@ -50,6 +65,14 @@ All API keys are encrypted before storage using SecureStorage.
 - **Visual Editor**: Drag-and-drop content blocks with product placement
 - **Multi-Provider AI**: Support for Google Gemini, OpenAI, Anthropic, Groq, and OpenRouter
 - **Dual Product Box Styles**: Toggle between Classic and Premium (Luxe Aurora) designs
+
+### Enterprise Features (v80.1)
+- **Undo/Redo System**: Full history management with Ctrl+Z/Ctrl+Shift+Z keyboard shortcuts
+- **Batch Processing Engine**: Process multiple posts simultaneously with configurable concurrency (1-10 workers)
+- **Keyboard Shortcuts**: Global keyboard shortcuts for productivity (Ctrl+Z, Ctrl+Shift+Z, Escape)
+- **Accessibility**: Reduced motion detection respecting user preferences
+- **AI Copy Enhancement**: AI-powered copy optimization for maximum conversions
+- **Drag-and-Drop Editor**: Visual drop zones with position indicators
 
 ## Premium Product Box Design
 Ultra-luxe product box with state-of-the-art design features:
@@ -74,6 +97,27 @@ SerpAPI usage is optimized to minimize costs:
 - Batched concurrent requests with rate limiting
 - Duplicate URL detection and deduplication
 - Automatic retry with fallback strategies
+- Web Crypto API encryption (PBKDF2 + AES-GCM, 100k iterations)
+- Request deduplication layer for API optimization
+- Progressive proxy strategy with latency tracking
+- Auto-save system (30s intervals, 24h recovery window)
+- Component error boundaries for graceful degradation
+
+## Keyboard Shortcuts
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Z / Cmd+Z | Undo last action |
+| Ctrl+Shift+Z / Cmd+Shift+Z | Redo action |
+| Ctrl+Y | Redo action (alternative) |
+| Escape | Go back / Close modal |
+
+## Batch Processing
+The batch processor allows processing multiple posts at once:
+- **Configurable Concurrency**: 1-10 parallel workers
+- **Real-time Progress**: Per-job progress tracking
+- **Auto-Publish Option**: Automatically push to WordPress
+- **Abort Capability**: Stop processing at any time
+- **Statistics Dashboard**: Completed, failed, products found
 
 ## Ultra-Precise Product Detection
 The Deep Intelligence Scan uses a 6-strategy extraction pipeline:

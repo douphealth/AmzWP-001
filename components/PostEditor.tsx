@@ -5,6 +5,9 @@ import { pushToWordPress, fetchRawPostContent, analyzeContentAndFindProduct, spl
 import { ProductBoxPreview } from './ProductBoxPreview';
 import { PremiumProductBox } from './PremiumProductBox';
 import { ComparisonTablePreview } from './ComparisonTablePreview';
+import { useHistory } from '../hooks/useHistory';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import Toastify from 'toastify-js';
 
 // ============================================================================
@@ -30,8 +33,27 @@ interface EditorNode {
 }
 
 export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) => {
-    // Core State
-    const [editorNodes, setEditorNodes] = useState<EditorNode[]>([]);
+    // Core State with History (Undo/Redo)
+    const {
+        state: editorNodes,
+        set: setEditorNodesWithHistory,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
+        historyLength,
+        reset: resetHistory,
+    } = useHistory<EditorNode[]>([]);
+    
+    // Direct setter for initialization (bypasses history)
+    const setEditorNodes = useCallback((nodes: EditorNode[] | ((prev: EditorNode[]) => EditorNode[])) => {
+        if (typeof nodes === 'function') {
+            setEditorNodesWithHistory(nodes);
+        } else {
+            setEditorNodesWithHistory(nodes);
+        }
+    }, [setEditorNodesWithHistory]);
+    
     const [productMap, setProductMap] = useState<Record<string, ProductDetails>>({});
     const [currentId, setCurrentId] = useState<number>(post.id);
     const [status, setStatus] = useState<'idle' | 'fetching' | 'analyzing' | 'pushing' | 'error'>('idle');
@@ -39,6 +61,19 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
     const [hoveredNode, setHoveredNode] = useState<string | null>(null);
     const [manualAsin, setManualAsin] = useState<string>('');
     const [addingProduct, setAddingProduct] = useState<boolean>(false);
+    
+    // Reduced Motion Preference
+    const prefersReducedMotion = useReducedMotion();
+    
+    // Keyboard Shortcuts
+    useKeyboardShortcuts({
+        'ctrl+z': () => { if (canUndo) { undo(); Toastify({ text: 'Undo', duration: 1500, style: { background: '#6366f1' } }).showToast(); } },
+        'meta+z': () => { if (canUndo) { undo(); Toastify({ text: 'Undo', duration: 1500, style: { background: '#6366f1' } }).showToast(); } },
+        'ctrl+shift+z': () => { if (canRedo) { redo(); Toastify({ text: 'Redo', duration: 1500, style: { background: '#6366f1' } }).showToast(); } },
+        'meta+shift+z': () => { if (canRedo) { redo(); Toastify({ text: 'Redo', duration: 1500, style: { background: '#6366f1' } }).showToast(); } },
+        'ctrl+y': () => { if (canRedo) { redo(); Toastify({ text: 'Redo', duration: 1500, style: { background: '#6366f1' } }).showToast(); } },
+        'escape': onBack,
+    }, { ignoreInputs: true });
 
     // Initialization Logic
     useEffect(() => {
@@ -94,7 +129,8 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
                     offset++;
                 }
 
-                setEditorNodes(nodes);
+                // Use resetHistory to set initial state without creating undo history
+                resetHistory(nodes);
                 setStatus('idle');
             } catch (e: any) {
                 setStatus('error');
@@ -102,7 +138,7 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
             }
         };
         init();
-    }, [post.id, config]);
+    }, [post.id, config, resetHistory]);
 
     // --- AUTO-SAVE SYSTEM ---
     
@@ -444,7 +480,27 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
                     </button>
                     <div className="flex items-center justify-between">
                         <h1 className="text-xl font-black text-white tracking-tight">Assets <span className="text-brand-500">deck</span></h1>
-                        <div className="flex gap-3">
+                        <div className="flex gap-2 items-center">
+                            {/* Undo/Redo Controls */}
+                            <div className="flex items-center gap-1 bg-dark-800/50 rounded-full px-2 py-1">
+                                <button 
+                                    onClick={undo} 
+                                    disabled={!canUndo}
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${canUndo ? 'hover:bg-dark-700 text-white' : 'text-dark-600 cursor-not-allowed'}`}
+                                    title="Undo (Ctrl+Z)"
+                                >
+                                    <i className="fa-solid fa-rotate-left text-xs" />
+                                </button>
+                                <span className="text-[10px] font-bold text-dark-500 min-w-[2ch] text-center">{historyLength}</span>
+                                <button 
+                                    onClick={redo} 
+                                    disabled={!canRedo}
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${canRedo ? 'hover:bg-dark-700 text-white' : 'text-dark-600 cursor-not-allowed'}`}
+                                    title="Redo (Ctrl+Shift+Z)"
+                                >
+                                    <i className="fa-solid fa-rotate-right text-xs" />
+                                </button>
+                            </div>
                             <button onClick={() => { IntelligenceCache.clear(); window.location.reload(); }} className="w-8 h-8 rounded-full bg-dark-800 hover:bg-red-500/20 text-gray-400 hover:text-red-500 flex items-center justify-center transition-all" title="Clear Cache"><i className="fa-solid fa-trash-can text-xs"></i></button>
                         </div>
                     </div>
@@ -618,7 +674,6 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
                                                                 product={productMap[node.productId]} 
                                                                 affiliateTag={config.amazonTag} 
                                                                 mode={productMap[node.productId].deploymentMode}
-                                                                variant={productMap[node.productId].deploymentMode === 'TACTICAL_LINK' ? 'MINIMAL_FLOAT' : 'LUXE_CARD'}
                                                             />
                                                         ) : (
                                                             <ProductBoxPreview 

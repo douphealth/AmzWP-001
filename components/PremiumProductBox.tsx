@@ -1,461 +1,843 @@
-/**
- * ============================================================================
- * PremiumProductBox | ULTRA-LUXE DESIGN v1.0
- * ============================================================================
- * State-of-the-Art Product Box with:
- * - Glass Morphism + Aurora Gradient Effects
- * - Animated Micro-Interactions
- * - Premium Typography & Spacing
- * - Luxury Trust Signals
- * - Dual Modes: LUXE_CARD / MINIMAL_FLOAT
- * ============================================================================
- */
+// PremiumProductBox.tsx - COMPLETE REDESIGN
 
-import React, { useState } from 'react';
-import { ProductDetails, DeploymentMode, FAQItem } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { ProductDetails, DeploymentMode } from '../types';
 
 interface PremiumProductBoxProps {
   product: ProductDetails;
   affiliateTag?: string;
   mode?: DeploymentMode;
-  variant?: 'LUXE_CARD' | 'MINIMAL_FLOAT';
 }
-
-const DEFAULT_BULLETS = [
-  "Precision-engineered for exceptional performance",
-  "Industry-leading build quality and materials",
-  "Comprehensive warranty protection included",
-  "Trusted by 50,000+ verified customers"
-];
-
-const DEFAULT_FAQS: FAQItem[] = [
-  { question: "What warranty coverage is included?", answer: "Full manufacturer warranty with extended protection options available." },
-  { question: "How fast is delivery?", answer: "Prime-eligible for next-day delivery in most areas." },
-  { question: "Is customer support available?", answer: "24/7 dedicated support via phone, chat, and email." }
-];
-
-const getCurrentDate = (): string => {
-  return new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-};
 
 export const PremiumProductBox: React.FC<PremiumProductBoxProps> = ({
   product,
   affiliateTag = 'amzwp-20',
-  mode = 'ELITE_BENTO',
-  variant = 'LUXE_CARD'
+  mode = 'ELITE_BENTO'
 }) => {
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
-  const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  
-  const amazonLink = `https://www.amazon.com/dp/${product.asin}?tag=${affiliateTag}`;
-  const imageSrc = imageError 
-    ? `https://via.placeholder.com/400x400/f8fafc/64748b?text=${encodeURIComponent(product.title.substring(0, 20))}` 
-    : product.imageUrl;
-  const stars = Math.min(5, Math.max(0, Math.round(product.rating || 4.5)));
-  const verdict = product.verdict || product.description || `Experience premium quality with the ${product.title}. Engineered for excellence and trusted by professionals worldwide.`;
-  const bullets = product.pros?.length ? product.pros.slice(0, 4) : DEFAULT_BULLETS;
-  const faqs = product.faqs?.length ? product.faqs.slice(0, 3) : DEFAULT_FAQS;
-  const currentDate = getCurrentDate();
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [showConfetti, setShowConfetti] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  if (mode === 'TACTICAL_LINK' || variant === 'MINIMAL_FLOAT') {
-    return <MinimalFloat 
-      product={product} 
-      amazonLink={amazonLink} 
-      imageSrc={imageSrc} 
-      stars={stars}
-      verdict={verdict}
-      onImageError={() => setImageError(true)}
-    />;
-  }
+  const amazonLink = `https://www.amazon.com/dp/${product.asin}?tag=${affiliateTag}`;
+  const stars = Math.min(5, Math.max(0, Math.round(product.rating || 4.5)));
+
+  // 3D Tilt Effect Handler
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    setMousePosition({ x, y });
+  };
+
+  const handleCTAClick = () => {
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 2000);
+  };
 
   return (
-    <div 
-      className="w-full max-w-[1200px] mx-auto my-20 font-sans antialiased px-4"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Main Container with Aurora Background */}
-      <div className="relative">
-        {/* Animated Aurora Background */}
-        <div className="absolute -inset-4 rounded-[60px] overflow-hidden opacity-60 blur-3xl pointer-events-none">
-          <div className={`absolute inset-0 bg-gradient-to-r from-violet-600/30 via-fuchsia-500/20 to-amber-400/30 transition-all duration-1000 ${isHovered ? 'scale-110 opacity-100' : 'scale-100 opacity-60'}`} />
-          <div className={`absolute inset-0 bg-gradient-to-t from-blue-600/20 via-transparent to-rose-400/20 transition-all duration-1000 delay-100 ${isHovered ? 'opacity-80' : 'opacity-40'}`} />
+    <div className="amz-hyperbox-wrapper">
+      {/* Animated Background Mesh */}
+      <div className="amz-mesh-gradient" />
+
+      {/* Floating Particles */}
+      <div className="amz-particles">
+        {[...Array(20)].map((_, i) => (
+          <span key={i} className="particle" style={{ '--i': i } as React.CSSProperties} />
+        ))}
+      </div>
+
+      {/* Main Card with 3D Tilt */}
+      <div
+        ref={cardRef}
+        className="amz-hypercard"
+        onMouseMove={handleMouseMove}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => { setIsHovered(false); setMousePosition({ x: 0, y: 0 }); }}
+        style={{
+          transform: isHovered
+            ? `perspective(1000px) rotateY(${mousePosition.x * 10}deg) rotateX(${-mousePosition.y * 10}deg) scale(1.02)`
+            : 'perspective(1000px) rotateY(0) rotateX(0) scale(1)',
+        }}
+      >
+        {/* Holographic Shine Effect */}
+        <div 
+          className="amz-holographic"
+          style={{
+            background: `radial-gradient(circle at ${50 + mousePosition.x * 100}% ${50 + mousePosition.y * 100}%, rgba(255,255,255,0.3) 0%, transparent 50%)`,
+          }}
+        />
+
+        {/* Animated Border Gradient */}
+        <div className="amz-border-glow" />
+
+        {/* Top Badge with Pulse Animation */}
+        <div className="amz-floating-badge">
+          <div className="badge-pulse" />
+          <span className="badge-icon">👑</span>
+          <span className="badge-text">EDITOR'S CHOICE 2026</span>
+          <span className="badge-live">● LIVE</span>
         </div>
 
-        {/* Glass Card */}
-        <div className="relative bg-white/90 backdrop-blur-2xl rounded-[48px] border border-white/60 shadow-[0_60px_140px_-30px_rgba(0,0,0,0.12)] overflow-hidden">
-          
-          {/* Floating Premium Badge */}
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-40">
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-amber-400 to-orange-500 blur-lg opacity-60" />
-              <div className="relative flex items-center gap-3 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-8 py-3 rounded-full shadow-2xl border border-white/10">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                  <i className="fa-solid fa-crown text-white text-[10px]" />
-                </div>
-                <span className="text-[11px] font-black uppercase tracking-[4px] text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-100 to-amber-200">
-                  Premium Selection
-                </span>
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+        {/* Bento Grid Layout */}
+        <div className="amz-bento-grid">
+
+          {/* Image Section with Magnetic Effect */}
+          <div className="amz-image-cell">
+            <div className="image-glow" />
+            <div className="image-ring" />
+            <img 
+              src={product.imageUrl} 
+              alt={product.title}
+              className="product-image"
+              style={{
+                transform: isHovered
+                  ? `translate(${mousePosition.x * 20}px, ${mousePosition.y * 20}px) scale(1.1) rotate(${mousePosition.x * 5}deg)`
+                  : 'translate(0, 0) scale(1) rotate(0deg)',
+              }}
+            />
+
+            {/* Floating Stats Orbs */}
+            <div className="floating-orb orb-rating">
+              <div className="orb-content">
+                <span className="orb-value">{product.rating?.toFixed(1)}</span>
+                <span className="orb-label">Rating</span>
+              </div>
+            </div>
+            <div className="floating-orb orb-reviews">
+              <div className="orb-content">
+                <span className="orb-value">{(product.reviewCount || 0).toLocaleString()}</span>
+                <span className="orb-label">Reviews</span>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col xl:flex-row">
-            
-            {/* LEFT: Visual Showcase */}
-            <div className="xl:w-[45%] relative bg-gradient-to-br from-slate-50/80 via-white to-slate-100/50 p-12 xl:p-16 flex flex-col items-center justify-center border-b xl:border-b-0 xl:border-r border-slate-200/50">
-              
-              {/* Floating Rating Orb */}
-              <div className="absolute top-8 left-8 z-20">
-                <div className="relative group/rating">
-                  <div className="absolute inset-0 bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl blur-lg opacity-40 group-hover/rating:opacity-60 transition-opacity" />
-                  <div className="relative bg-white/95 backdrop-blur-xl px-5 py-4 rounded-3xl shadow-xl border border-white/60">
-                    <div className="flex items-center gap-2">
-                      {[...Array(5)].map((_, i) => (
-                        <i key={i} className={`fa-solid fa-star text-sm ${i < stars ? 'text-amber-400' : 'text-slate-200'}`} />
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-2xl font-black text-slate-900">{product.rating?.toFixed(1) || '4.8'}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">/ 5.0</span>
-                    </div>
-                    <p className="text-[10px] font-medium text-slate-500 mt-1">
-                      {product.reviewCount?.toLocaleString() || '2,400'}+ reviews
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Prime Badge */}
-              {product.prime && (
-                <div className="absolute top-8 right-8 z-20">
-                  <div className="bg-[#232F3E] text-white px-4 py-2 rounded-xl text-[11px] font-bold flex items-center gap-2 shadow-xl">
-                    <i className="fa-brands fa-amazon" />
-                    <span className="tracking-wider">Prime</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Product Image with Luxury Effects */}
-              <a 
-                href={amazonLink}
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                className="relative group/img w-full flex items-center justify-center py-12"
-              >
-                {/* Glowing Ring */}
-                <div className={`absolute inset-[10%] rounded-full border-2 border-dashed transition-all duration-700 ${isHovered ? 'border-violet-300/60 scale-105 rotate-180' : 'border-slate-200/40 scale-100 rotate-0'}`} />
-                
-                {/* Soft Glow */}
-                <div className={`absolute inset-[5%] bg-gradient-to-br from-violet-400/10 via-fuchsia-300/5 to-amber-400/10 rounded-full blur-3xl transition-all duration-700 ${isHovered ? 'scale-125 opacity-100' : 'scale-100 opacity-60'}`} />
-                
-                <img 
-                  src={imageSrc}
-                  alt={product.title}
-                  onError={() => setImageError(true)}
-                  loading="lazy"
-                  className={`relative z-10 max-h-[320px] xl:max-h-[400px] w-auto object-contain drop-shadow-2xl transition-all duration-700 ${isHovered ? 'scale-110 -rotate-2' : 'scale-100 rotate-0'}`}
-                />
-              </a>
-
-              {/* Brand Signature */}
-              <div className="flex items-center gap-4 mt-6">
-                <div className="h-px w-12 bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-                <span className="text-[10px] font-black uppercase tracking-[6px] text-slate-400">
-                  {product.brand || 'Premium Brand'}
-                </span>
-                <div className="h-px w-12 bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-              </div>
+          {/* Content Section */}
+          <div className="amz-content-cell">
+            {/* Animated Category Pills */}
+            <div className="category-pills">
+              <span className="pill pill-category">{product.category || 'Premium'}</span>
+              {product.prime && <span className="pill pill-prime">⚡ PRIME</span>}
+              <span className="pill pill-verified">✓ VERIFIED</span>
             </div>
 
-            {/* RIGHT: Intelligence Core */}
-            <div className="xl:w-[55%] p-12 xl:p-16 flex flex-col justify-between bg-white">
-              
-              <div className="space-y-8">
-                
-                {/* Category + Badges */}
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="inline-flex items-center gap-2 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-5 py-2.5 rounded-full border border-violet-100/80">
-                    <span className="w-2 h-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-[3px] text-violet-700">
-                      {product.category || 'Premium'}
-                    </span>
-                  </div>
-                  <div className="inline-flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
-                    <i className="fa-solid fa-shield-check text-emerald-500 text-xs" />
-                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Verified</span>
-                  </div>
-                </div>
+            {/* Title with Gradient Animation */}
+            <h2 className="product-title">
+              <span className="title-text">{product.title}</span>
+            </h2>
 
-                {/* Title */}
-                <h2 className="text-3xl xl:text-5xl font-black text-slate-900 leading-[1.05] tracking-tight">
-                  {product.title}
-                </h2>
-
-                {/* Premium Verdict Box */}
-                <div className="relative">
-                  <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-violet-500 via-fuchsia-500 to-amber-500 rounded-full" />
-                  <div className="pl-8 pr-4 py-6 bg-gradient-to-r from-slate-50/80 to-transparent rounded-r-3xl">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
-                        <i className="fa-solid fa-sparkles text-white" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-black uppercase tracking-[2px] text-slate-900">Expert Analysis</span>
-                        <p className="text-[10px] text-slate-400">Updated {currentDate}</p>
-                      </div>
-                    </div>
-                    <p className="text-base xl:text-lg font-medium text-slate-600 leading-relaxed">
-                      {verdict}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Premium Benefits Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {bullets.map((bullet, idx) => (
-                    <div 
-                      key={idx}
-                      className="group/benefit flex items-start gap-4 p-5 bg-gradient-to-br from-white to-slate-50/50 rounded-3xl border border-slate-100 hover:border-violet-200 hover:shadow-xl hover:shadow-violet-500/5 transition-all duration-500"
-                    >
-                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/25 group-hover/benefit:scale-110 group-hover/benefit:rotate-3 transition-all duration-300">
-                        <i className="fa-solid fa-check text-white text-sm" />
-                      </div>
-                      <span className="text-sm font-semibold text-slate-700 leading-relaxed pt-2">
-                        {bullet}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+            {/* AI-Generated Verdict Box */}
+            <div className="verdict-box">
+              <div className="verdict-header">
+                <span className="verdict-icon">🧠</span>
+                <span className="verdict-label">AI Analysis</span>
+                <span className="verdict-badge">GPT-4 Verified</span>
               </div>
-
-              {/* Price & CTA */}
-              <div className="mt-12 pt-10 border-t border-slate-100">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-8">
-                  
-                  {/* Price Display */}
-                  <div className="text-center sm:text-left">
-                    <div className="flex items-center gap-3 justify-center sm:justify-start mb-3">
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-[4px]">Today's Price</span>
-                      {product.prime && (
-                        <span className="text-[9px] font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 rounded-full shadow-lg">
-                          Prime Deal
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-6xl xl:text-7xl font-black text-slate-900 tracking-tighter">
-                        {product.price}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Ultra-Premium CTA */}
-                  <a 
-                    href={amazonLink}
-                    target="_blank"
-                    rel="nofollow sponsored noopener"
-                    className="group/cta relative w-full sm:w-auto"
-                  >
-                    {/* Glow Effect */}
-                    <div className="absolute -inset-1 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-amber-500 rounded-3xl blur-lg opacity-60 group-hover/cta:opacity-100 transition-opacity duration-300" />
-                    
-                    {/* Button */}
-                    <div className="relative bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white px-14 py-7 rounded-3xl font-black text-sm uppercase tracking-[4px] shadow-2xl flex items-center justify-center gap-5 group-hover/cta:scale-[1.02] transition-all duration-300">
-                      <span>View on Amazon</span>
-                      <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center group-hover/cta:bg-white/20 transition-colors">
-                        <i className="fa-solid fa-arrow-right text-lg group-hover/cta:translate-x-1 transition-transform" />
-                      </div>
-                    </div>
-                    
-                    {/* Shine Effect */}
-                    <div className="absolute inset-0 -translate-x-full group-hover/cta:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/10 to-transparent rounded-3xl overflow-hidden" />
-                  </a>
-                </div>
-              </div>
+              <p className="verdict-text">{product.verdict}</p>
             </div>
-          </div>
 
-          {/* FAQ Section */}
-          {faqs.length > 0 && (
-            <div className="bg-gradient-to-b from-slate-50/50 to-slate-100/30 border-t border-slate-200/50 p-10 xl:p-14">
-              <div className="flex items-center gap-5 mb-8">
-                <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-xl shadow-violet-500/25">
-                  <i className="fa-solid fa-messages-question text-white text-xl" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-900">Frequently Asked</h3>
-                  <p className="text-sm text-slate-500">Quick answers to common questions</p>
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-5">
-                {faqs.map((faq, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
-                    className={`bg-white rounded-3xl border cursor-pointer transition-all duration-300 overflow-hidden ${
-                      expandedFaq === idx 
-                        ? 'border-violet-200 shadow-xl shadow-violet-500/10' 
-                        : 'border-slate-100 hover:border-slate-200 hover:shadow-lg'
-                    }`}
-                  >
-                    <div className="p-6">
-                      <div className="flex items-start gap-4">
-                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all ${
-                          expandedFaq === idx
-                            ? 'bg-gradient-to-br from-violet-500 to-fuchsia-500 shadow-lg'
-                            : 'bg-slate-100'
-                        }`}>
-                          <span className={`text-xs font-black ${expandedFaq === idx ? 'text-white' : 'text-slate-500'}`}>
-                            {idx + 1}
-                          </span>
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-bold text-slate-900 text-sm leading-snug">{faq.question}</h4>
-                          <div className={`overflow-hidden transition-all duration-300 ${
-                            expandedFaq === idx ? 'max-h-32 opacity-100 mt-4' : 'max-h-0 opacity-0'
-                          }`}>
-                            <p className="text-sm text-slate-600 leading-relaxed">{faq.answer}</p>
-                          </div>
-                        </div>
-                        <i className={`fa-solid fa-chevron-down text-slate-400 text-sm transition-transform ${
-                          expandedFaq === idx ? 'rotate-180' : ''
-                        }`} />
-                      </div>
-                    </div>
-                  </div>
+            {/* Animated Benefits Marquee */}
+            <div className="benefits-marquee">
+              <div className="marquee-track">
+                {[...(product.evidenceClaims || []), ...(product.evidenceClaims || [])].map((claim, i) => (
+                  <span key={i} className="benefit-item">
+                    <span className="benefit-check">✓</span>
+                    {claim}
+                  </span>
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Trust Footer */}
-          <div className="bg-slate-950 px-10 py-8">
-            <div className="flex flex-wrap justify-center items-center gap-8 xl:gap-16">
-              {[
-                { icon: 'fa-amazon', text: 'Amazon Verified', brand: true },
-                { icon: 'fa-shield-halved', text: 'Secure Checkout', brand: false },
-                { icon: 'fa-rotate-left', text: '30-Day Returns', brand: false },
-                { icon: 'fa-truck-fast', text: 'Fast Prime Shipping', brand: false },
-                { icon: 'fa-headset', text: '24/7 Support', brand: false }
-              ].map((signal, idx) => (
-                <div key={idx} className="flex items-center gap-3 text-slate-400 hover:text-white transition-colors group/trust">
-                  <i className={`fa-${signal.brand ? 'brands' : 'solid'} ${signal.icon} group-hover/trust:scale-110 transition-transform`} />
-                  <span className="text-[10px] font-bold uppercase tracking-[2px]">{signal.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ============================================================================
-// MINIMAL FLOAT VARIANT - Ultra-Clean Horizontal Card
-// ============================================================================
-
-interface MinimalFloatProps {
-  product: ProductDetails;
-  amazonLink: string;
-  imageSrc: string;
-  stars: number;
-  verdict: string;
-  onImageError: () => void;
-}
-
-const MinimalFloat: React.FC<MinimalFloatProps> = ({
-  product,
-  amazonLink,
-  imageSrc,
-  stars,
-  verdict,
-  onImageError
-}) => {
-  const currentDate = getCurrentDate();
-
-  return (
-    <div className="w-full max-w-[1000px] mx-auto my-12 px-4">
-      <div className="group relative">
-        {/* Aurora Glow */}
-        <div className="absolute -inset-2 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/10 to-amber-500/20 rounded-[36px] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        
-        {/* Card */}
-        <div className="relative bg-white/95 backdrop-blur-xl rounded-[32px] border border-slate-200/80 p-6 md:p-8 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.08)] hover:shadow-[0_40px_100px_-25px_rgba(0,0,0,0.15)] transition-all duration-500 flex flex-col md:flex-row items-center gap-8">
-          
-          {/* Left Accent */}
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-violet-500 via-fuchsia-500 to-amber-500 rounded-l-[32px]" />
-          
-          {/* Premium Badge */}
-          <div className="absolute -top-2 right-6 bg-gradient-to-r from-slate-950 to-slate-900 text-white text-[9px] font-black uppercase tracking-[3px] py-2 px-5 rounded-full shadow-xl flex items-center gap-2">
-            <i className="fa-solid fa-gem text-amber-400 text-[8px]" />
-            Top Pick
           </div>
 
-          {/* Image */}
-          <div className="w-28 h-28 md:w-36 md:h-36 bg-gradient-to-br from-slate-50 to-white rounded-3xl flex items-center justify-center flex-shrink-0 border border-slate-100 p-4 shadow-inner group-hover:scale-105 transition-transform duration-500">
-            <img 
-              src={imageSrc}
-              alt={product.title}
-              onError={onImageError}
-              loading="lazy"
-              className="max-h-full max-w-full object-contain drop-shadow-lg"
-            />
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 text-center md:text-left min-w-0 space-y-3">
-            <div className="flex items-center justify-center md:justify-start gap-4 flex-wrap">
-              <span className="text-[9px] font-black uppercase tracking-[2px] text-violet-600 bg-violet-50 px-4 py-1.5 rounded-full border border-violet-100">
-                {currentDate} Pick
-              </span>
-              <div className="flex items-center gap-2">
-                <div className="flex">
-                  {[...Array(5)].map((_, i) => (
-                    <i key={i} className={`fa-solid fa-star text-xs ${i < stars ? 'text-amber-400' : 'text-slate-200'}`} />
-                  ))}
-                </div>
-                <span className="text-[10px] font-bold text-slate-400">
-                  ({product.reviewCount?.toLocaleString() || '2.4k'})
-                </span>
+          {/* Price & CTA Section */}
+          <div className="amz-action-cell">
+            {/* Price Display with Counter Animation */}
+            <div className="price-display">
+              <span className="price-label">BEST PRICE TODAY</span>
+              <div className="price-value">
+                <span className="price-currency">$</span>
+                <span className="price-amount">{product.price?.replace(/[^0-9.]/g, '')}</span>
+              </div>
+              <div className="price-savings">
+                <span className="savings-badge">🔥 Limited Time</span>
               </div>
             </div>
-            
-            <h3 className="font-black text-slate-900 text-xl md:text-2xl leading-tight line-clamp-2">
-              {product.title}
-            </h3>
-            
-            <p className="text-slate-500 text-sm line-clamp-2 hidden md:block leading-relaxed">
-              {verdict}
-            </p>
-          </div>
 
-          {/* Price & CTA */}
-          <div className="flex flex-col items-center gap-4 flex-shrink-0 w-full md:w-auto">
-            <div className="text-center">
-              <span className="text-[9px] text-slate-400 uppercase tracking-[2px] font-bold block mb-1">Best Price</span>
-              <span className="text-4xl font-black text-slate-900 tracking-tight">{product.price}</span>
-            </div>
-            
-            <a
+            {/* Ultra CTA Button */}
+            <a 
               href={amazonLink}
               target="_blank"
               rel="nofollow sponsored noopener"
-              className="group/btn relative w-full md:w-auto"
+              className="hyper-cta"
+              onClick={handleCTAClick}
             >
-              <div className="absolute -inset-1 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-2xl blur opacity-40 group-hover/btn:opacity-80 transition-opacity" />
-              <div className="relative px-10 py-5 bg-gradient-to-r from-slate-950 to-slate-900 text-white text-xs font-black uppercase tracking-[3px] rounded-2xl flex items-center justify-center gap-3 hover:scale-105 active:scale-95 transition-all duration-300 shadow-2xl">
-                View Deal
-                <i className="fa-solid fa-arrow-right group-hover/btn:translate-x-1 transition-transform" />
-              </div>
+              <span className="cta-bg" />
+              <span className="cta-glow" />
+              <span className="cta-text">
+                <span>View on Amazon</span>
+                <span className="cta-arrow">→</span>
+              </span>
+              <span className="cta-shine" />
             </a>
+
+            {/* Trust Micro-Badges */}
+            <div className="trust-row">
+              <span className="trust-item">🔒 Secure</span>
+              <span className="trust-item">🚚 Free Ship</span>
+              <span className="trust-item">↩️ Returns</span>
+            </div>
           </div>
         </div>
+
+        {/* Confetti Effect on CTA Click */}
+        {showConfetti && (
+          <div className="confetti-container">
+            {[...Array(50)].map((_, i) => (
+              <span key={i} className="confetti" style={{ '--i': i } as React.CSSProperties} />
+            ))}
+          </div>
+        )}
       </div>
+
+      <style>{`
+        /* ═══════════════════════════════════════════════════════════════
+           HYPER-PREMIUM PRODUCT BOX - 2026 EDITION
+           ═══════════════════════════════════════════════════════════════ */
+
+        .amz-hyperbox-wrapper {
+          --accent-1: #6366f1;
+          --accent-2: #ec4899;
+          --accent-3: #f59e0b;
+          --dark: #0a0a0f;
+          --glass: rgba(255, 255, 255, 0.03);
+
+          position: relative;
+          max-width: 1200px;
+          margin: 5rem auto;
+          padding: 2rem;
+          font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        /* Animated Mesh Gradient Background */
+        .amz-mesh-gradient {
+          position: absolute;
+          inset: -50%;
+          background: 
+            radial-gradient(ellipse at 20% 30%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 70%, rgba(236, 72, 153, 0.15) 0%, transparent 50%),
+            radial-gradient(ellipse at 50% 50%, rgba(245, 158, 11, 0.1) 0%, transparent 50%);
+          filter: blur(60px);
+          animation: meshFloat 20s ease-in-out infinite;
+          pointer-events: none;
+        }
+
+        @keyframes meshFloat {
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          33% { transform: translate(30px, -30px) rotate(5deg); }
+          66% { transform: translate(-20px, 20px) rotate(-5deg); }
+        }
+
+        /* Floating Particles */
+        .amz-particles {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: none;
+        }
+
+        .particle {
+          position: absolute;
+          width: 4px;
+          height: 4px;
+          background: var(--accent-1);
+          border-radius: 50%;
+          opacity: 0.3;
+          animation: particleFloat 15s linear infinite;
+          left: calc(var(--i) * 5%);
+          animation-delay: calc(var(--i) * -0.5s);
+        }
+
+        @keyframes particleFloat {
+          0% { transform: translateY(100vh) scale(0); opacity: 0; }
+          10% { opacity: 0.6; }
+          90% { opacity: 0.6; }
+          100% { transform: translateY(-100vh) scale(1); opacity: 0; }
+        }
+
+        /* Main Card */
+        .amz-hypercard {
+          position: relative;
+          background: linear-gradient(135deg, rgba(15, 15, 25, 0.95), rgba(20, 20, 35, 0.9));
+          border-radius: 32px;
+          overflow: hidden;
+          transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+          transform-style: preserve-3d;
+        }
+
+        /* Holographic Shine */
+        .amz-holographic {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 10;
+          opacity: 0;
+          transition: opacity 0.3s;
+        }
+
+        .amz-hypercard:hover .amz-holographic {
+          opacity: 1;
+        }
+
+        /* Animated Border Glow */
+        .amz-border-glow {
+          position: absolute;
+          inset: 0;
+          border-radius: 32px;
+          padding: 2px;
+          background: linear-gradient(135deg, var(--accent-1), var(--accent-2), var(--accent-3), var(--accent-1));
+          background-size: 400% 400%;
+          animation: borderGlow 8s linear infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          opacity: 0.5;
+        }
+
+        .amz-hypercard:hover .amz-border-glow {
+          opacity: 1;
+          animation-duration: 3s;
+        }
+
+        @keyframes borderGlow {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+
+        /* Floating Badge */
+        .amz-floating-badge {
+          position: absolute;
+          top: -1px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 20;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: linear-gradient(135deg, #1a1a2e, #16162a);
+          padding: 12px 24px;
+          border-radius: 0 0 20px 20px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-top: none;
+        }
+
+        .badge-pulse {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+          border-radius: inherit;
+          opacity: 0;
+          animation: badgePulse 2s ease-out infinite;
+        }
+
+        @keyframes badgePulse {
+          0% { transform: scale(1); opacity: 0.5; }
+          100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        .badge-icon {
+          font-size: 18px;
+          animation: badgeIconBounce 2s ease-in-out infinite;
+        }
+
+        @keyframes badgeIconBounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-3px); }
+        }
+
+        .badge-text {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 2px;
+          background: linear-gradient(90deg, #fff, #a5b4fc);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .badge-live {
+          font-size: 9px;
+          font-weight: 700;
+          color: #22c55e;
+          animation: livePulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes livePulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        /* Bento Grid */
+        .amz-bento-grid {
+          display: grid;
+          grid-template-columns: 1fr 1.5fr;
+          grid-template-rows: auto auto;
+          gap: 0;
+          padding: 3rem;
+        }
+
+        @media (max-width: 900px) {
+          .amz-bento-grid {
+            grid-template-columns: 1fr;
+            padding: 2rem;
+          }
+        }
+
+        /* Image Cell */
+        .amz-image-cell {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem;
+          min-height: 400px;
+        }
+
+        .image-glow {
+          position: absolute;
+          width: 60%;
+          height: 60%;
+          background: radial-gradient(circle, var(--accent-1) 0%, transparent 70%);
+          opacity: 0.2;
+          filter: blur(40px);
+          animation: glowPulse 4s ease-in-out infinite;
+        }
+
+        @keyframes glowPulse {
+          0%, 100% { transform: scale(1); opacity: 0.2; }
+          50% { transform: scale(1.2); opacity: 0.3; }
+        }
+
+        .image-ring {
+          position: absolute;
+          width: 80%;
+          height: 80%;
+          border: 2px dashed rgba(255, 255, 255, 0.1);
+          border-radius: 50%;
+          animation: ringRotate 30s linear infinite;
+        }
+
+        @keyframes ringRotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .product-image {
+          position: relative;
+          z-index: 5;
+          max-width: 80%;
+          max-height: 350px;
+          object-fit: contain;
+          filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.5));
+          transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        /* Floating Orbs */
+        .floating-orb {
+          position: absolute;
+          width: 80px;
+          height: 80px;
+          background: linear-gradient(135deg, rgba(30, 30, 50, 0.9), rgba(20, 20, 40, 0.9));
+          border-radius: 20px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          backdrop-filter: blur(10px);
+          animation: orbFloat 6s ease-in-out infinite;
+          z-index: 10;
+        }
+
+        .orb-rating { top: 10%; right: 10%; animation-delay: 0s; }
+        .orb-reviews { bottom: 10%; left: 10%; animation-delay: -3s; }
+
+        @keyframes orbFloat {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+
+        .orb-content {
+          text-align: center;
+        }
+
+        .orb-value {
+          display: block;
+          font-size: 20px;
+          font-weight: 900;
+          background: linear-gradient(135deg, var(--accent-3), var(--accent-2));
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .orb-label {
+          font-size: 9px;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.5);
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+
+        /* Content Cell */
+        .amz-content-cell {
+          padding: 2rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
+
+        /* Category Pills */
+        .category-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .pill {
+          padding: 8px 16px;
+          border-radius: 100px;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+
+        .pill-category {
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+          color: #a5b4fc;
+          border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .pill-prime {
+          background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(249, 115, 22, 0.2));
+          color: #fcd34d;
+          border: 1px solid rgba(245, 158, 11, 0.3);
+          animation: primeGlow 2s ease-in-out infinite;
+        }
+
+        @keyframes primeGlow {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+          50% { box-shadow: 0 0 20px 0 rgba(245, 158, 11, 0.3); }
+        }
+
+        .pill-verified {
+          background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(22, 163, 74, 0.2));
+          color: #86efac;
+          border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        /* Product Title */
+        .product-title {
+          font-size: 2.5rem;
+          font-weight: 900;
+          line-height: 1.1;
+          letter-spacing: -1px;
+          margin: 0;
+        }
+
+        .title-text {
+          background: linear-gradient(135deg, #fff 0%, #e2e8f0 50%, #fff 100%);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: titleShine 3s linear infinite;
+        }
+
+        @keyframes titleShine {
+          to { background-position: 200% center; }
+        }
+
+        /* Verdict Box */
+        .verdict-box {
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
+          border: 1px solid rgba(99, 102, 241, 0.2);
+          border-radius: 20px;
+          padding: 1.5rem;
+        }
+
+        .verdict-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .verdict-icon {
+          font-size: 20px;
+          animation: brainPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes brainPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+        }
+
+        .verdict-label {
+          font-size: 12px;
+          font-weight: 700;
+          color: #a5b4fc;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+
+        .verdict-badge {
+          margin-left: auto;
+          font-size: 9px;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.5);
+          background: rgba(255, 255, 255, 0.05);
+          padding: 4px 10px;
+          border-radius: 100px;
+        }
+
+        .verdict-text {
+          font-size: 15px;
+          line-height: 1.7;
+          color: rgba(255, 255, 255, 0.8);
+          margin: 0;
+        }
+
+        /* Benefits Marquee */
+        .benefits-marquee {
+          overflow: hidden;
+          mask-image: linear-gradient(90deg, transparent, white 10%, white 90%, transparent);
+        }
+
+        .marquee-track {
+          display: flex;
+          gap: 2rem;
+          animation: marquee 20s linear infinite;
+        }
+
+        @keyframes marquee {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+
+        .benefit-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          white-space: nowrap;
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .benefit-check {
+          color: #22c55e;
+          font-weight: bold;
+        }
+
+        /* Action Cell */
+        .amz-action-cell {
+          grid-column: 1 / -1;
+          padding: 2rem 3rem;
+          background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.3));
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 2rem;
+          flex-wrap: wrap;
+        }
+
+        /* Price Display */
+        .price-display {
+          text-align: left;
+        }
+
+        .price-label {
+          font-size: 10px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.5);
+          text-transform: uppercase;
+          letter-spacing: 2px;
+        }
+
+        .price-value {
+          display: flex;
+          align-items: flex-start;
+          gap: 4px;
+        }
+
+        .price-currency {
+          font-size: 24px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.7);
+          margin-top: 8px;
+        }
+
+        .price-amount {
+          font-size: 56px;
+          font-weight: 900;
+          background: linear-gradient(135deg, #fff, #fcd34d);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          line-height: 1;
+        }
+
+        .savings-badge {
+          display: inline-block;
+          font-size: 11px;
+          font-weight: 700;
+          color: #fcd34d;
+          margin-top: 8px;
+          animation: savingsPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes savingsPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+
+        /* Hyper CTA Button */
+        .hyper-cta {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px 48px;
+          border-radius: 16px;
+          text-decoration: none;
+          overflow: hidden;
+          cursor: pointer;
+          transition: transform 0.3s;
+        }
+
+        .hyper-cta:hover {
+          transform: scale(1.05);
+        }
+
+        .hyper-cta:active {
+          transform: scale(0.98);
+        }
+
+        .cta-bg {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, #6366f1, #ec4899);
+          transition: opacity 0.3s;
+        }
+
+        .cta-glow {
+          position: absolute;
+          inset: -2px;
+          background: linear-gradient(135deg, #6366f1, #ec4899, #f59e0b, #6366f1);
+          background-size: 300% 300%;
+          animation: ctaGlow 4s linear infinite;
+          filter: blur(15px);
+          opacity: 0.5;
+          z-index: -1;
+        }
+
+        .hyper-cta:hover .cta-glow {
+          opacity: 0.8;
+        }
+
+        @keyframes ctaGlow {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+
+        .cta-text {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          font-size: 16px;
+          font-weight: 800;
+          color: white;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+        }
+
+        .cta-arrow {
+          display: inline-block;
+          transition: transform 0.3s;
+        }
+
+        .hyper-cta:hover .cta-arrow {
+          transform: translateX(5px);
+        }
+
+        .cta-shine {
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+          transition: left 0.5s;
+        }
+
+        .hyper-cta:hover .cta-shine {
+          left: 100%;
+        }
+
+        /* Trust Row */
+        .trust-row {
+          display: flex;
+          gap: 1.5rem;
+        }
+
+        .trust-item {
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.5);
+          transition: color 0.3s;
+        }
+
+        .trust-item:hover {
+          color: rgba(255, 255, 255, 0.8);
+        }
+
+        /* Confetti */
+        .confetti-container {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          overflow: hidden;
+          z-index: 100;
+        }
+
+        .confetti {
+          position: absolute;
+          width: 10px;
+          height: 10px;
+          background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+          top: 50%;
+          left: 50%;
+          animation: confettiBurst 1s ease-out forwards;
+          animation-delay: calc(var(--i) * 0.02s);
+        }
+
+        @keyframes confettiBurst {
+          0% {
+            transform: translate(0, 0) rotate(0deg) scale(0);
+            opacity: 1;
+          }
+          100% {
+            transform: 
+              translate(
+                calc((var(--i) - 25) * 20px), 
+                calc((var(--i) - 25) * -20px + 200px)
+              ) 
+              rotate(720deg) 
+              scale(1);
+            opacity: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 };

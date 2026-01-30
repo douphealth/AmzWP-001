@@ -24,6 +24,7 @@ import {
   debounce,
 } from '../utils';
 import Toastify from 'toastify-js';
+import { BatchProcessor, BatchJob } from './BatchProcessor';
 
 // ============================================================================
 // LIGHTWEIGHT VIRTUAL LIST - Enterprise Windowing Solution
@@ -259,6 +260,10 @@ export const SitemapScanner: React.FC<SitemapScannerProps> = ({
   const [manualUrlError, setManualUrlError] = useState('');
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkUrls, setBulkUrls] = useState('');
+  
+  // Batch Processing State
+  const [showBatchProcessor, setShowBatchProcessor] = useState(false);
+  const [selectedForBatch, setSelectedForBatch] = useState<BlogPost[]>([]);
 
   // Refs for preventing race conditions
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -523,6 +528,24 @@ export const SitemapScanner: React.FC<SitemapScannerProps> = ({
     showToast('URL removed', 'info');
   }, [savedState, onStateChange, showToast]);
 
+  // ========== BATCH PROCESSING HANDLERS ==========
+  
+  const handleStartBatchProcess = useCallback(() => {
+    const postsToProcess = filteredPosts.length > 0 ? filteredPosts : savedState.posts;
+    setSelectedForBatch(postsToProcess);
+    setShowBatchProcessor(true);
+  }, [filteredPosts, savedState.posts]);
+
+  const handleBatchComplete = useCallback((results: BatchJob[]) => {
+    const completed = results.filter(r => r.status === 'completed').length;
+    const failed = results.filter(r => r.status === 'failed').length;
+    const productsFound = results.reduce((sum, r) => sum + r.productsFound, 0);
+    
+    showToast(`Batch complete: ${completed} processed, ${productsFound} products found${failed > 0 ? `, ${failed} failed` : ''}`, 
+      failed > 0 ? 'warning' : 'success'
+    );
+  }, [showToast]);
+
   // Debounced search handler
   const debouncedSearch = useMemo(
     () => debounce((value: string) => setSearchQuery(value), 300),
@@ -772,11 +795,22 @@ export const SitemapScanner: React.FC<SitemapScannerProps> = ({
               <h2 className="text-[12px] font-black uppercase tracking-[8px] text-gray-600">
                 {filteredPosts.length} of {savedState.posts.length} Posts
               </h2>
-              {savedState.lastScanned && (
-                <span className="text-[10px] text-gray-600">
-                  Last scanned: {new Date(savedState.lastScanned).toLocaleString()}
-                </span>
-              )}
+              <div className="flex items-center gap-4">
+                {savedState.posts.length > 0 && (
+                  <button
+                    onClick={handleStartBatchProcess}
+                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-900/30 transition-all flex items-center gap-2"
+                  >
+                    <i className="fa-solid fa-bolt" />
+                    Batch Process ({filteredPosts.length || savedState.posts.length})
+                  </button>
+                )}
+                {savedState.lastScanned && (
+                  <span className="text-[10px] text-gray-600">
+                    Last scanned: {new Date(savedState.lastScanned).toLocaleString()}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Empty State */}
@@ -831,6 +865,16 @@ export const SitemapScanner: React.FC<SitemapScannerProps> = ({
           </div>
         </div>
       </main>
+      
+      {/* Batch Processor Modal */}
+      {showBatchProcessor && (
+        <BatchProcessor
+          posts={selectedForBatch}
+          config={config}
+          onComplete={handleBatchComplete}
+          onClose={() => setShowBatchProcessor(false)}
+        />
+      )}
     </div>
   );
 };
