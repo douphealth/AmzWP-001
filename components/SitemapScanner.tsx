@@ -12,7 +12,7 @@
  * ============================================================================
  */
 
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, CSSProperties, Component, ReactNode, ErrorInfo, useEffect } from 'react';
 import { BlogPost, SitemapState, AppConfig } from '../types';
 import { 
   fetchAndParseSitemap, 
@@ -24,6 +24,192 @@ import {
   debounce,
 } from '../utils';
 import Toastify from 'toastify-js';
+
+// ============================================================================
+// LIGHTWEIGHT VIRTUAL LIST - Enterprise Windowing Solution
+// ============================================================================
+
+const VIRTUALIZATION_THRESHOLD = 50;
+const ROW_HEIGHT = 160;
+const BUFFER_SIZE = 5;
+
+interface VirtualizedListProps<T> {
+  items: T[];
+  height: number;
+  itemHeight: number;
+  renderItem: (item: T, index: number, style: CSSProperties) => ReactNode;
+  keyExtractor: (item: T) => string | number;
+}
+
+function VirtualizedList<T>({ items, height, itemHeight, renderItem, keyExtractor }: VirtualizedListProps<T>) {
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  const totalHeight = items.length * itemHeight;
+  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - BUFFER_SIZE);
+  const endIndex = Math.min(items.length, Math.ceil((scrollTop + height) / itemHeight) + BUFFER_SIZE);
+  const visibleItems = items.slice(startIndex, endIndex);
+  
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+  
+  return (
+    <div
+      ref={containerRef}
+      style={{ height, overflow: 'auto' }}
+      onScroll={handleScroll}
+      className="custom-scrollbar"
+    >
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        {visibleItems.map((item, i) => {
+          const actualIndex = startIndex + i;
+          const style: CSSProperties = {
+            position: 'absolute',
+            top: actualIndex * itemHeight,
+            left: 0,
+            right: 0,
+            height: itemHeight,
+          };
+          return (
+            <React.Fragment key={keyExtractor(item)}>
+              {renderItem(item, actualIndex, style)}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// COMPONENT ERROR BOUNDARY
+// ============================================================================
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback?: ReactNode;
+  componentName?: string;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ComponentErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error(`[${this.props.componentName || 'Component'} Error]:`, error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-6 text-center">
+            <div className="text-red-400 text-xl mb-2">
+              <i className="fa-solid fa-exclamation-triangle"></i>
+            </div>
+            <p className="text-red-400 text-sm font-bold">
+              {this.props.componentName || 'Component'} Error
+            </p>
+            <button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="mt-3 text-xs text-red-400 underline hover:text-red-300"
+            >
+              Try Again
+            </button>
+          </div>
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ============================================================================
+// VIRTUALIZED POST ROW COMPONENT
+// ============================================================================
+
+interface PostRowProps {
+  post: BlogPost;
+  onPostSelect: (post: BlogPost) => void;
+  onRemovePost: (id: number) => void;
+  style: CSSProperties;
+}
+
+const PostRow: React.FC<PostRowProps> = React.memo(({ post, onPostSelect, onRemovePost, style }) => (
+  <div style={style} className="px-1 py-2">
+    <article
+      className="bg-dark-900/80 border border-dark-800 rounded-[36px] p-8 flex items-center justify-between group hover:border-brand-500 hover:bg-dark-900 transition-all duration-300 shadow-xl h-full"
+    >
+      <div className="flex-1 min-w-0 pr-8">
+        <div className="flex items-center gap-3 mb-3">
+          {post.priority === 'critical' && (
+            <span className="bg-red-500/10 text-red-500 text-[9px] font-black px-4 py-1.5 rounded-full border border-red-500/30 uppercase tracking-[2px]">
+              High Priority
+            </span>
+          )}
+          {post.priority === 'high' && (
+            <span className="bg-orange-500/10 text-orange-500 text-[9px] font-black px-4 py-1.5 rounded-full border border-orange-500/30 uppercase tracking-[2px]">
+              Medium Priority
+            </span>
+          )}
+          {post.monetizationStatus === 'monetized' && (
+            <span className="bg-green-500/10 text-green-500 text-[9px] font-black px-4 py-1.5 rounded-full border border-green-500/30 uppercase tracking-[2px]">
+              <i className="fa-solid fa-check mr-1"></i>
+              Monetized
+            </span>
+          )}
+          <span className="text-[9px] text-gray-600 font-black uppercase tracking-widest">
+            {post.postType}
+          </span>
+        </div>
+
+        <h3 className="text-2xl font-black text-white truncate tracking-tight group-hover:text-brand-400 transition-colors">
+          {post.title}
+        </h3>
+
+        <a
+          href={post.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] font-mono text-gray-500 hover:text-brand-400 truncate mt-2 block w-fit transition-colors"
+          onClick={e => e.stopPropagation()}
+        >
+          {post.url}
+        </a>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => onRemovePost(post.id)}
+          className="w-10 h-10 rounded-full bg-dark-800 text-gray-500 hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
+          title="Remove URL"
+        >
+          <i className="fa-solid fa-trash-can text-xs"></i>
+        </button>
+        <button
+          onClick={() => onPostSelect(post)}
+          className="bg-white text-dark-950 font-black px-10 py-4 rounded-[20px] uppercase tracking-[3px] text-[11px] shadow-xl hover:bg-brand-500 hover:text-white hover:scale-105 active:scale-95 transition-all"
+        >
+          Edit Post
+        </button>
+      </div>
+    </article>
+  </div>
+));
+
+PostRow.displayName = 'PostRow';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -610,72 +796,37 @@ export const SitemapScanner: React.FC<SitemapScannerProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {filteredPosts.map(post => (
-                  <article
-                    key={post.id}
-                    className="bg-dark-900/80 border border-dark-800 rounded-[36px] p-8 flex items-center justify-between group hover:border-brand-500 hover:bg-dark-900 transition-all duration-300 shadow-xl"
-                  >
-                    <div className="flex-1 min-w-0 pr-8">
-                      {/* Status Badges */}
-                      <div className="flex items-center gap-3 mb-3">
-                        {post.priority === 'critical' && (
-                          <span className="bg-red-500/10 text-red-500 text-[9px] font-black px-4 py-1.5 rounded-full border border-red-500/30 uppercase tracking-[2px]">
-                            High Priority
-                          </span>
-                        )}
-                        {post.priority === 'high' && (
-                          <span className="bg-orange-500/10 text-orange-500 text-[9px] font-black px-4 py-1.5 rounded-full border border-orange-500/30 uppercase tracking-[2px]">
-                            Medium Priority
-                          </span>
-                        )}
-                        {post.monetizationStatus === 'monetized' && (
-                          <span className="bg-green-500/10 text-green-500 text-[9px] font-black px-4 py-1.5 rounded-full border border-green-500/30 uppercase tracking-[2px]">
-                            <i className="fa-solid fa-check mr-1"></i>
-                            Monetized
-                          </span>
-                        )}
-                        <span className="text-[9px] text-gray-600 font-black uppercase tracking-widest">
-                          {post.postType}
-                        </span>
-                      </div>
-
-                      {/* Title */}
-                      <h3 className="text-2xl font-black text-white truncate tracking-tight group-hover:text-brand-400 transition-colors">
-                        {post.title}
-                      </h3>
-
-                      {/* URL */}
-                      <a
-                        href={post.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-mono text-gray-500 hover:text-brand-400 truncate mt-2 block w-fit transition-colors"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        {post.url}
-                      </a>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleRemovePost(post.id)}
-                        className="w-10 h-10 rounded-full bg-dark-800 text-gray-500 hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
-                        title="Remove URL"
-                      >
-                        <i className="fa-solid fa-trash-can text-xs"></i>
-                      </button>
-                      <button
-                        onClick={() => onPostSelect(post)}
-                        className="bg-white text-dark-950 font-black px-10 py-4 rounded-[20px] uppercase tracking-[3px] text-[11px] shadow-xl hover:bg-brand-500 hover:text-white hover:scale-105 active:scale-95 transition-all"
-                      >
-                        Edit Post
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
+              <ComponentErrorBoundary componentName="PostList">
+                {filteredPosts.length >= VIRTUALIZATION_THRESHOLD ? (
+                  <VirtualizedList
+                    items={filteredPosts}
+                    height={Math.min(filteredPosts.length * ROW_HEIGHT, 600)}
+                    itemHeight={ROW_HEIGHT}
+                    keyExtractor={(post) => post.id}
+                    renderItem={(post, index, style) => (
+                      <PostRow
+                        key={post.id}
+                        post={post}
+                        onPostSelect={onPostSelect}
+                        onRemovePost={handleRemovePost}
+                        style={style}
+                      />
+                    )}
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {filteredPosts.map(post => (
+                      <PostRow
+                        key={post.id}
+                        post={post}
+                        onPostSelect={onPostSelect}
+                        onRemovePost={handleRemovePost}
+                        style={{}}
+                      />
+                    ))}
+                  </div>
+                )}
+              </ComponentErrorBoundary>
             )}
           </div>
         </div>

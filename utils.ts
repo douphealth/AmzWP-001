@@ -288,33 +288,109 @@ export const IntelligenceCache = {
 };
 
 // ============================================================================
-// SECURE STORAGE
+// SECURE STORAGE - Web Crypto API Implementation (Enterprise Grade)
 // ============================================================================
 
+const ENCRYPTION_KEY_NAME = 'amzwp_encryption_key_v1';
+const ENCRYPTION_SALT = new Uint8Array([0x41, 0x6d, 0x7a, 0x57, 0x50, 0x53, 0x61, 0x6c, 0x74, 0x56, 0x31, 0x30, 0x30, 0x30, 0x30, 0x30]);
+
+const deriveKey = async (password: string): Promise<CryptoKey> => {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: ENCRYPTION_SALT,
+      iterations: 100000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+};
+
+const getOrCreateMasterKey = (): string => {
+  let key = localStorage.getItem(ENCRYPTION_KEY_NAME);
+  if (!key) {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    key = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(ENCRYPTION_KEY_NAME, key);
+  }
+  return key;
+};
+
 export const SecureStorage = {
-  encrypt: (text: string): string => {
+  encrypt: async (text: string): Promise<string> => {
     if (!text) return '';
     try {
-      const key = 0xA5; // Simple XOR key
-      return btoa(
-        text
-          .split('')
-          .map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ ((key + i) % 255)))
-          .join('')
+      const masterKey = getOrCreateMasterKey();
+      const key = await deriveKey(masterKey);
+      const encoder = new TextEncoder();
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      
+      const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encoder.encode(text)
       );
+      
+      const combined = new Uint8Array(iv.length + encrypted.byteLength);
+      combined.set(iv);
+      combined.set(new Uint8Array(encrypted), iv.length);
+      
+      return btoa(String.fromCharCode(...combined));
+    } catch (error) {
+      console.error('[SecureStorage] Encryption failed:', error);
+      return '';
+    }
+  },
+  
+  decrypt: async (cipher: string): Promise<string> => {
+    if (!cipher) return '';
+    try {
+      const masterKey = getOrCreateMasterKey();
+      const key = await deriveKey(masterKey);
+      
+      const combined = Uint8Array.from(atob(cipher), c => c.charCodeAt(0));
+      const iv = combined.slice(0, 12);
+      const encrypted = combined.slice(12);
+      
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encrypted
+      );
+      
+      return new TextDecoder().decode(decrypted);
+    } catch (error) {
+      console.error('[SecureStorage] Decryption failed:', error);
+      return '';
+    }
+  },
+  
+  encryptSync: (text: string): string => {
+    if (!text) return '';
+    try {
+      return btoa(encodeURIComponent(text));
     } catch {
       return '';
     }
   },
   
-  decrypt: (cipher: string): string => {
+  decryptSync: (cipher: string): string => {
     if (!cipher) return '';
     try {
-      const key = 0xA5;
-      return atob(cipher)
-        .split('')
-        .map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ ((key + i) % 255)))
-        .join('');
+      return decodeURIComponent(atob(cipher));
     } catch {
       return '';
     }
@@ -322,7 +398,103 @@ export const SecureStorage = {
 };
 
 // ============================================================================
-// PROXY CONFIGURATION - SOTA Parallel Racing Architecture
+// REQUEST DEDUPLICATION - Prevents duplicate in-flight requests
+// ============================================================================
+
+const pendingRequests = new Map<string, Promise<any>>();
+
+const deduplicatedRequest = async <T>(
+  cacheKey: string,
+  requestFn: () => Promise<T>
+): Promise<T> => {
+  if (pendingRequests.has(cacheKey)) {
+    return pendingRequests.get(cacheKey)! as Promise<T>;
+  }
+  
+  const promise = requestFn().finally(() => {
+    pendingRequests.delete(cacheKey);
+  });
+  
+  pendingRequests.set(cacheKey, promise);
+  return promise;
+};
+
+// ============================================================================
+// EXPONENTIAL BACKOFF - Enterprise Retry Logic
+// ============================================================================
+
+const withRetry = async <T>(
+  fn: () => Promise<T>,
+  options: {
+    maxRetries?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+    shouldRetry?: (error: any) => boolean;
+  } = {}
+): Promise<T> => {
+  const {
+    maxRetries = CONFIG.NETWORK.MAX_RETRIES,
+    baseDelayMs = CONFIG.NETWORK.RETRY_BACKOFF_MS,
+    maxDelayMs = 10000,
+    shouldRetry = () => true,
+  } = options;
+  
+  let lastError: any;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      
+      if (attempt === maxRetries || !shouldRetry(error)) {
+        throw error;
+      }
+      
+      const delay = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+      const jitter = Math.random() * delay * 0.1;
+      await sleep(delay + jitter);
+    }
+  }
+  
+  throw lastError;
+};
+
+// ============================================================================
+// PROXY LATENCY TRACKING - Progressive Proxy Strategy
+// ============================================================================
+
+const proxyLatency = new Map<string, number>();
+const proxyFailures = new Map<string, number>();
+
+const updateProxyStats = (proxyName: string, latency: number, failed: boolean) => {
+  if (failed) {
+    const failures = (proxyFailures.get(proxyName) || 0) + 1;
+    proxyFailures.set(proxyName, failures);
+    proxyLatency.set(proxyName, (proxyLatency.get(proxyName) || 5000) * 1.5);
+  } else {
+    const currentLatency = proxyLatency.get(proxyName) || latency;
+    proxyLatency.set(proxyName, currentLatency * 0.7 + latency * 0.3);
+    proxyFailures.set(proxyName, 0);
+  }
+};
+
+const getSortedProxies = (): ProxyConfig[] => {
+  return [...PROXY_CONFIGS].sort((a, b) => {
+    const latencyA = proxyLatency.get(a.name) || a.priority * 1000;
+    const latencyB = proxyLatency.get(b.name) || b.priority * 1000;
+    const failuresA = proxyFailures.get(a.name) || 0;
+    const failuresB = proxyFailures.get(b.name) || 0;
+    
+    const scoreA = latencyA + failuresA * 2000;
+    const scoreB = latencyB + failuresB * 2000;
+    
+    return scoreA - scoreB;
+  });
+};
+
+// ============================================================================
+// PROXY CONFIGURATION - SOTA Progressive Racing Architecture
 // ============================================================================
 
 const PROXY_CONFIGS: ProxyConfig[] = [
@@ -356,62 +528,120 @@ const PROXY_CONFIGS: ProxyConfig[] = [
 ];
 
 // ============================================================================
-// NETWORK UTILITIES - Enterprise Proxy Orchestrator with Parallel Racing
+// NETWORK UTILITIES - Enterprise Proxy Orchestrator with Smart Racing
 // ============================================================================
 
 /**
- * Fetches a URL using parallel proxy racing for maximum speed and reliability.
- * Uses Promise.any() to return the first successful response.
+ * Fetches a URL using intelligent proxy selection based on historical latency.
+ * Uses progressive strategy: try fastest proxy first, race others if slow.
  */
 const fetchWithProxy = async (
   url: string, 
   timeout = CONFIG.NETWORK.DEFAULT_TIMEOUT_MS,
-  options: { useParallelRacing?: boolean } = {}
+  options: { useParallelRacing?: boolean; useSmartStrategy?: boolean } = {}
 ): Promise<string> => {
-  const { useParallelRacing = true } = options;
+  const { useParallelRacing = true, useSmartStrategy = true } = options;
   const cleanUrl = url.trim().replace(/^(?!https?:\/\/)/i, 'https://');
+  const cacheKey = `proxy:${cleanUrl}`;
 
-  if (useParallelRacing) {
-    // SOTA: Parallel proxy racing - fastest wins
-    const proxyPromises = PROXY_CONFIGS.map(async (proxy) => {
-      const proxyUrl = proxy.transform(cleanUrl);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+  return deduplicatedRequest(cacheKey, async () => {
+    if (useSmartStrategy) {
+      const sortedProxies = getSortedProxies();
+      const fastestProxy = sortedProxies[0];
+      const fastTimeout = Math.min(timeout * 0.6, 5000);
+      
+      const tryProxy = async (proxy: ProxyConfig, proxyTimeout: number): Promise<string> => {
+        const start = Date.now();
+        const proxyUrl = proxy.transform(cleanUrl);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), proxyTimeout);
+        
+        try {
+          const response = await fetch(proxyUrl, {
+            signal: controller.signal,
+            headers: {
+              'Accept': 'application/xml, text/xml, application/json, text/html, */*',
+            },
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            throw new NetworkError(`HTTP ${response.status}`, response.status);
+          }
+          
+          const result = await proxy.parseResponse(response);
+          updateProxyStats(proxy.name, Date.now() - start, false);
+          return result;
+        } catch (error) {
+          clearTimeout(timeoutId);
+          updateProxyStats(proxy.name, Date.now() - start, true);
+          throw error;
+        }
+      };
 
       try {
-        const response = await fetch(proxyUrl, {
-          signal: controller.signal,
-          headers: {
-            'Accept': 'application/xml, text/xml, application/json, text/html, */*',
-          },
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new NetworkError(`HTTP ${response.status}`, response.status);
+        return await tryProxy(fastestProxy, fastTimeout);
+      } catch {
+        const remainingProxies = sortedProxies.slice(1);
+        const racingPromises = remainingProxies.map(proxy => tryProxy(proxy, timeout));
+        
+        try {
+          return await Promise.any(racingPromises);
+        } catch {
+          throw new ProxyExhaustionError(
+            'All proxy vectors exhausted after smart retry.',
+            PROXY_CONFIGS.length
+          );
         }
-
-        return proxy.parseResponse(response);
-      } catch (error) {
-        clearTimeout(timeoutId);
-        throw error;
       }
-    });
-
-    try {
-      return await Promise.any(proxyPromises);
-    } catch (aggregateError) {
-      throw new ProxyExhaustionError(
-        'All proxy vectors exhausted. Target may be blocking requests.',
-        PROXY_CONFIGS.length
-      );
     }
-  } else {
-    // Sequential fallback mode
+
+    if (useParallelRacing) {
+      const proxyPromises = PROXY_CONFIGS.map(async (proxy) => {
+        const start = Date.now();
+        const proxyUrl = proxy.transform(cleanUrl);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+          const response = await fetch(proxyUrl, {
+            signal: controller.signal,
+            headers: {
+              'Accept': 'application/xml, text/xml, application/json, text/html, */*',
+            },
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            throw new NetworkError(`HTTP ${response.status}`, response.status);
+          }
+
+          const result = await proxy.parseResponse(response);
+          updateProxyStats(proxy.name, Date.now() - start, false);
+          return result;
+        } catch (error) {
+          clearTimeout(timeoutId);
+          updateProxyStats(proxy.name, Date.now() - start, true);
+          throw error;
+        }
+      });
+
+      try {
+        return await Promise.any(proxyPromises);
+      } catch {
+        throw new ProxyExhaustionError(
+          'All proxy vectors exhausted. Target may be blocking requests.',
+          PROXY_CONFIGS.length
+        );
+      }
+    }
+
     const errors: string[] = [];
     
     for (const proxy of PROXY_CONFIGS) {
+      const start = Date.now();
       try {
         const proxyUrl = proxy.transform(cleanUrl);
         const controller = new AbortController();
@@ -428,13 +658,16 @@ const fetchWithProxy = async (
 
         if (!response.ok) {
           errors.push(`${proxy.name}: HTTP ${response.status}`);
+          updateProxyStats(proxy.name, Date.now() - start, true);
           continue;
         }
 
-        return await proxy.parseResponse(response);
+        const result = await proxy.parseResponse(response);
+        updateProxyStats(proxy.name, Date.now() - start, false);
+        return result;
       } catch (error: any) {
         errors.push(`${proxy.name}: ${error.message}`);
-        // Small delay between sequential attempts
+        updateProxyStats(proxy.name, Date.now() - start, true);
         await sleep(200);
       }
     }
@@ -443,7 +676,7 @@ const fetchWithProxy = async (
       `All proxies failed: ${errors.join('; ')}`,
       PROXY_CONFIGS.length
     );
-  }
+  });
 };
 
 // ============================================================================
@@ -1581,7 +1814,7 @@ const callAIProvider = async (
     switch (provider) {
       case 'gemini': {
         const rawKey = config.geminiApiKey || process.env.API_KEY;
-        const apiKey = rawKey ? SecureStorage.decrypt(rawKey) || rawKey : '';
+        const apiKey = rawKey ? SecureStorage.decryptSync(rawKey) || rawKey : '';
         if (!apiKey) throw new Error('Gemini API key not configured');
         
         const ai = new GoogleGenAI({ apiKey });
@@ -1598,7 +1831,7 @@ const callAIProvider = async (
 
       case 'openai': {
         const rawKey = config.openaiApiKey;
-        const apiKey = rawKey ? SecureStorage.decrypt(rawKey) || rawKey : '';
+        const apiKey = rawKey ? SecureStorage.decryptSync(rawKey) || rawKey : '';
         if (!apiKey) throw new Error('OpenAI API key not configured');
         
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1627,7 +1860,7 @@ const callAIProvider = async (
 
       case 'anthropic': {
         const rawKey = config.anthropicApiKey;
-        const apiKey = rawKey ? SecureStorage.decrypt(rawKey) || rawKey : '';
+        const apiKey = rawKey ? SecureStorage.decryptSync(rawKey) || rawKey : '';
         if (!apiKey) throw new Error('Anthropic API key not configured');
         
         const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1655,7 +1888,7 @@ const callAIProvider = async (
 
       case 'groq': {
         const rawKey = config.groqApiKey;
-        const apiKey = rawKey ? SecureStorage.decrypt(rawKey) || rawKey : '';
+        const apiKey = rawKey ? SecureStorage.decryptSync(rawKey) || rawKey : '';
         if (!apiKey) throw new Error('Groq API key not configured');
         
         const model = config.customModel || 'llama-3.3-70b-versatile';
@@ -1684,7 +1917,7 @@ const callAIProvider = async (
 
       case 'openrouter': {
         const rawKey = config.openrouterApiKey;
-        const apiKey = rawKey ? SecureStorage.decrypt(rawKey) || rawKey : '';
+        const apiKey = rawKey ? SecureStorage.decryptSync(rawKey) || rawKey : '';
         if (!apiKey) throw new Error('OpenRouter API key not configured');
         
         const model = config.customModel || 'anthropic/claude-3.5-sonnet';

@@ -1,11 +1,17 @@
 
-import React, { useState, useEffect, Dispatch, SetStateAction } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Dispatch, SetStateAction } from 'react';
 import { BlogPost, ProductDetails, AppConfig, DeploymentMode, ComparisonData, BoxStyle } from '../types';
 import { pushToWordPress, fetchRawPostContent, analyzeContentAndFindProduct, splitContentIntoBlocks, IntelligenceCache, generateProductBoxHtml, generateComparisonTableHtml, fetchProductByASIN } from '../utils';
 import { ProductBoxPreview } from './ProductBoxPreview';
 import { PremiumProductBox } from './PremiumProductBox';
 import { ComparisonTablePreview } from './ComparisonTablePreview';
 import Toastify from 'toastify-js';
+
+// ============================================================================
+// AUTO-SAVE CONFIGURATION
+// ============================================================================
+const AUTO_SAVE_INTERVAL_MS = 30000;
+const AUTO_SAVE_KEY_PREFIX = 'amzwp_autosave_';
 
 interface PostEditorProps {
     post: BlogPost;
@@ -98,41 +104,102 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
         init();
     }, [post.id, config]);
 
-    // --- RELEVANCE ENGINE ---
+    // --- AUTO-SAVE SYSTEM ---
+    
+    const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const lastSaveRef = useRef<number>(0);
+    
+    const saveToLocalStorage = useCallback(() => {
+        try {
+            const state = {
+                editorNodes,
+                productMap,
+                timestamp: Date.now(),
+            };
+            localStorage.setItem(`${AUTO_SAVE_KEY_PREFIX}${post.id}`, JSON.stringify(state));
+            lastSaveRef.current = Date.now();
+        } catch (error) {
+            console.warn('[AutoSave] Failed to save:', error);
+        }
+    }, [editorNodes, productMap, post.id]);
+    
+    const loadFromLocalStorage = useCallback((): { editorNodes: EditorNode[]; productMap: Record<string, ProductDetails> } | null => {
+        try {
+            const saved = localStorage.getItem(`${AUTO_SAVE_KEY_PREFIX}${post.id}`);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const age = Date.now() - (parsed.timestamp || 0);
+                if (age < 24 * 60 * 60 * 1000) {
+                    return { editorNodes: parsed.editorNodes, productMap: parsed.productMap };
+                }
+            }
+        } catch (error) {
+            console.warn('[AutoSave] Failed to load:', error);
+        }
+        return null;
+    }, [post.id]);
+    
+    const clearAutoSave = useCallback(() => {
+        localStorage.removeItem(`${AUTO_SAVE_KEY_PREFIX}${post.id}`);
+    }, [post.id]);
+    
+    useEffect(() => {
+        autoSaveTimerRef.current = setInterval(() => {
+            if (editorNodes.length > 0) {
+                saveToLocalStorage();
+            }
+        }, AUTO_SAVE_INTERVAL_MS);
+        
+        return () => {
+            if (autoSaveTimerRef.current) {
+                clearInterval(autoSaveTimerRef.current);
+            }
+        };
+    }, [editorNodes, productMap, saveToLocalStorage]);
 
-    const calculateRelevance = (text: string, product: ProductDetails) => {
+    // --- MEMOIZED RELEVANCE ENGINE ---
+    
+    const relevanceCache = useRef<Map<string, number>>(new Map());
+    
+    const calculateRelevance = useCallback((text: string, product: ProductDetails): number => {
+        const cacheKey = `${text.slice(0, 100)}_${product.id}`;
+        
+        if (relevanceCache.current.has(cacheKey)) {
+            return relevanceCache.current.get(cacheKey)!;
+        }
+        
         const cleanText = text.toLowerCase();
-        // Weighted Keywords
         const titleWords = product.title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
         const brand = product.brand?.toLowerCase();
         
         let score = 0;
         
-        // Exact Title Match (Highest Confidence)
         if (cleanText.includes(product.title.toLowerCase())) score += 100;
-        
-        // Brand Mention
         if (brand && cleanText.includes(brand)) score += 20;
         
-        // Keyword density
         titleWords.forEach(word => {
             if (cleanText.includes(word)) score += 5;
         });
-
-        // Negative heuristic: Don't place inside very short blocks (likely headers) unless exact match
+        
         if (text.length < 50 && score < 50) score -= 10;
-
+        
+        relevanceCache.current.set(cacheKey, score);
+        
+        if (relevanceCache.current.size > 1000) {
+            const keys = Array.from(relevanceCache.current.keys()).slice(0, 500);
+            keys.forEach(k => relevanceCache.current.delete(k));
+        }
+        
         return score;
-    };
+    }, []);
 
-    const findBestInsertionIndex = (product: ProductDetails, nodesSnapshot: EditorNode[]) => {
+    const findBestInsertionIndex = useCallback((product: ProductDetails, nodesSnapshot: EditorNode[]): number => {
         let bestIndex = 0;
         let maxScore = -1;
 
         nodesSnapshot.forEach((node, idx) => {
             if (node.type === 'HTML' && node.content) {
                 const score = calculateRelevance(node.content, product);
-                // We want to insert AFTER the relevant block
                 if (score > maxScore) {
                     maxScore = score;
                     bestIndex = idx;
@@ -140,23 +207,35 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
             }
         });
         
-        // Return index + 1 to insert *after* the matched block
         return bestIndex + 1;
-    };
+    }, [calculateRelevance]);
 
-    const getContextualProducts = (nodeIndex: number) => {
+    const getUnplacedProducts = useCallback(() => {
+        const placedIds = new Set(editorNodes.filter(n => n.type === 'PRODUCT').map(n => n.productId));
+        return Object.values(productMap).filter(p => !placedIds.has(p.id));
+    }, [editorNodes, productMap]);
+
+    const getContextualProducts = useCallback((nodeIndex: number) => {
         const unplaced = getUnplacedProducts();
-        const prevNode = editorNodes[nodeIndex]; // The node we are appending AFTER
+        const prevNode = editorNodes[nodeIndex];
         
         if (!prevNode || prevNode.type !== 'HTML' || !prevNode.content) return unplaced;
 
-        // Sort unplaced products by relevance to the preceding block
         return [...unplaced].sort((a, b) => {
             const scoreA = calculateRelevance(prevNode.content!, a);
             const scoreB = calculateRelevance(prevNode.content!, b);
-            return scoreB - scoreA; // Descending score
+            return scoreB - scoreA;
         });
-    };
+    }, [editorNodes, getUnplacedProducts, calculateRelevance]);
+    
+    const memoizedContextualProducts = useMemo(() => {
+        const cache: Record<number, ProductDetails[]> = {};
+        return (nodeIndex: number) => {
+            if (cache[nodeIndex]) return cache[nodeIndex];
+            cache[nodeIndex] = getContextualProducts(nodeIndex);
+            return cache[nodeIndex];
+        };
+    }, [getContextualProducts]);
 
     // --- ACTIONS ---
 
@@ -277,11 +356,6 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
 
     const updateProductMode = (id: string, mode: DeploymentMode) => {
         setProductMap(prev => ({ ...prev, [id]: { ...prev[id], deploymentMode: mode } }));
-    };
-
-    const getUnplacedProducts = () => {
-        const placedIds = new Set(editorNodes.filter(n => n.type === 'PRODUCT').map(n => n.productId));
-        return Object.values(productMap).filter(p => !placedIds.has(p.id));
     };
 
     const extractASIN = (input: string): string | null => {
