@@ -67,13 +67,11 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
     
     // Keyboard Shortcuts
     useKeyboardShortcuts({
-        'ctrl+z': () => { if (canUndo) { undo(); toast( 'Undo', duration: 1500, style: { background: '#6366f1' } }); } },
-        'meta+z': () => { if (canUndo) { undo(); toast( 'Undo', duration: 1500, style: { background: '#6366f1' } }); } },
-        'ctrl+shift+z': () => { if (canRedo) { redo(); toast( 'Redo', duration: 1500, style: { background: '#6366f1' } }); } },
-        'meta+shift+z': () => { if (canRedo) { redo(); toast( 'Redo', duration: 1500, style: { background: '#6366f1' } }); } },
-        'ctrl+y': () => { if (canRedo) { redo(); toast( 'Redo', duration: 1500, style: { background: '#6366f1' } }); } },
-        'escape': onBack,
-    }, { ignoreInputs: true });
+    'ctrl+z': () => { if (canUndo) { undo(); toast('Undo', { duration: 1500, style: { background: '#6366f1' } }); } },        'meta+z': () => { if (canUndo) { undo(); toast( 'Undo', duration: 1500, style: { background: '#6366f1' } }); } },
+    'meta+z': () => { if (canUndo) { undo(); toast('Undo', { duration: 1500, style: { background: '#6366f1' } }); } },        'meta+shift+z': () => { if (canRedo) { redo(); toast( 'Redo', duration: 1500, style: { background: '#6366f1' } }); } },
+    'ctrl+shift+z': () => { if (canRedo) { redo(); toast('Redo', { duration: 1500, style: { background: '#6366f1' } }); } },    }, { ignoreInputs: true });
+    'meta+shift+z': () => { if (canRedo) { redo(); toast('Redo', { duration: 1500, style: { background: '#6366f1' } }); } },
+            'ctrl+y': () => { if (canRedo) { redo(); toast('Redo', { duration: 1500, style: { background: '#6366f1' } }); } },
 
     // Initialization Logic
     useEffect(() => {
