@@ -40,7 +40,7 @@ import {
  * Intelligent LRU Cache with localStorage persistence
  */
 class IntelligenceCacheClass {
-  private cache = new Map<string, CacheEntry<any>>();
+  private cache = new Map<string, CacheEntry<unknown>>();
   private maxSize = 500;
 
   get<T>(key: string): T | null {
@@ -153,8 +153,7 @@ class SecureStorageClass {
   }
 }
 
-export 620
-  const SecureStorage = new SecureStorageClass();
+export   const SecureStorage = new SecureStorageClass();
 
 
 
