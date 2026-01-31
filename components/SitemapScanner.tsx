@@ -23,7 +23,7 @@ import {
   fetchPageContent,
   getProxyStats,
 } from '../utils';
-import Toastify from 'toastify-js';
+import { toast } from 'sonner';
 
 // ============================================================================
 // TYPES
@@ -45,25 +45,7 @@ type FilterTab = 'all' | 'critical' | 'high' | 'medium' | 'low' | 'monetized';
 // ============================================================================
 
 const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
-  const colors = {
-    success: 'linear-gradient(135deg, #10b981, #059669)',
-    error: 'linear-gradient(135deg, #ef4444, #dc2626)',
-    warning: 'linear-gradient(135deg, #f59e0b, #d97706)',
-    info: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-  };
-  
-  Toastify({
-    text: message,
-    duration: 4000,
-    gravity: 'bottom',
-    position: 'right',
-    style: {
-      background: colors[type],
-      borderRadius: '16px',
-      fontWeight: 'bold',
-      boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
-    },
-  }).showToast();
+    toast[type](message);
 };
 
 // ============================================================================
