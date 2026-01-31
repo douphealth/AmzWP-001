@@ -618,6 +618,7 @@ export const fetchPageContent = async (
     // Strategy 2: Proxy fetch
     const html = await fetchWithSmartProxy(url, { 
       timeout: PAGE_FETCH_TIMEOUT_MS
+      });
     // Extract title
 const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
         let title = titleMatch 
