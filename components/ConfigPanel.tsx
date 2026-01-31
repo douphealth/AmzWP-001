@@ -484,8 +484,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ onSave, initialConfig 
               toast.success('✓ Connected to WordPress!');
             setTestConnectionStatus('success');
       } else {
-                toast.success('✓ Connected to WordPress!');
-                toast.error(result.message || 'Connection failed');
+                
+                        setTestConnectionStatus('error');
         }  
     
     } catch (error: any) {
@@ -502,7 +502,7 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ onSave, initialConfig 
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
             toast.error('Please fix validation errors');
-        turn;
+        return;
     }
 
     setIsSaving(true);
@@ -514,12 +514,8 @@ export const ConfigPanel: React.FC<ConfigPanelProps> = ({ onSave, initialConfig 
     setIsSaving(false);
     setIsOpen(false);
     
-    Toastify({ 
-      text: '✓ Configuration Saved', 
-      duration: 2000, 
-      style: { background: '#10b981' } 
-    }).showToast();
-  }, [config, activeTab, onSave]);
+    toast.success('✓ Configuration Saved'); 
+      }, [config, activeTab, onSave]);
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
