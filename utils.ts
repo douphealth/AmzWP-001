@@ -125,37 +125,6 @@ class IntelligenceCacheClass {
   }
 }
 
-  cleanup(): void {
-    this.cache.clear();
-    
-    try {
-      const keys = Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX));
-      keys.forEach(k => localStorage.removeItem(k));
-    } catch {}
-  }    
-    // Remove expired entries
-    expiredKeys.forEach(key => this.cache.delete(key));
-    
-    // Also clean up localStorage
-    try {
-      const keys = Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX));
-      keys.forEach(k => {
-        try {
-          const item = localStorage.getItem(k);
-          if (item) {
-            const parsed = JSON.parse(item);
-            if (parsed.timestamp && now > parsed.timestamp + (parsed.ttl || CACHE_TTL_MS)) {
-              localStorage.removeItem(k);
-            }
-          }
-        } catch {
-          // Invalid item, remove it
-          localStorage.removeItem(k);
-        }
-      });
-    } catch {
-      // localStorage not available
-    }
   }
 
 export const IntelligenceCache = new IntelligenceCacheClass();

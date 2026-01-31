@@ -208,7 +208,7 @@ export const SitemapScanner: React.FC<SitemapScannerProps> = ({
       return;
     }
 
-    if validation.normalizedUrl && (posts.some(p => p.url.toLowerCase() === validation.normalizedUrl.toLowerCase())) {
+        if (validation.normalizedUrl && posts.some(p => p.url.toLowerCase() === validation.normalizedUrl!.toLowerCase())) {
       showToast('URL already in list', 'warning');
       return;
     }
