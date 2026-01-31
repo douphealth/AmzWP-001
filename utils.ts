@@ -125,7 +125,6 @@ class IntelligenceCacheClass {
   }
 }
 
-  }
 
 export const IntelligenceCache = new IntelligenceCacheClass();
 
