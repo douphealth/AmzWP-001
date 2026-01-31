@@ -2244,24 +2244,149 @@ export const throttle = <T extends (...args: any[]) => any>(
 // PRODUCT BOX HTML GENERATION
 // ============================================================================
 
-/**
- * Generate default verdict text (HELPER - NOT EXPORTED)
- */
-const generateDefaultVerdict = (productTitle: string): string => {
-  const name = productTitle.split(' ').slice(0, 4).join(' ');
-  return `Engineered for users who demand excellence, the ${name} delivers professional-grade performance with meticulous attention to detail. Backed by thousands of verified reviews and trusted by industry professionals worldwide.`;
+const PRODUCT_CATEGORIES: Record<string, { benefits: string[]; verdictTemplate: string; faqs: Array<{q: string; a: string}> }> = {
+  fitness_tracker: {
+    benefits: ['Tracks heart rate, steps, and calories accurately', 'Water-resistant for swimming and workouts', 'Long battery life for extended use', 'Syncs with smartphone apps'],
+    verdictTemplate: 'This fitness tracker delivers comprehensive health monitoring with {rating}-star accuracy. With {reviews} verified reviews and {prime} shipping, it provides real-time tracking of your workouts, sleep patterns, and daily activity goals.',
+    faqs: [
+      { q: 'How accurate is the heart rate monitor?', a: 'Uses optical sensors with clinical-grade accuracy within 2-3 BPM of medical devices.' },
+      { q: 'Is it waterproof for swimming?', a: 'Water-resistant up to 50m, suitable for swimming, showering, and water sports.' },
+      { q: 'How long does the battery last?', a: 'Typical battery life is 5-7 days with normal use, depending on features enabled.' },
+      { q: 'Does it work with iPhone and Android?', a: 'Compatible with both iOS (iPhone 8+) and Android (6.0+) smartphones.' }
+    ]
+  },
+  smartwatch: {
+    benefits: ['Advanced health monitoring sensors', 'GPS tracking for outdoor activities', 'Customizable watch faces and bands', 'Smartphone notifications on your wrist'],
+    verdictTemplate: 'This smartwatch combines style with functionality, earning a {rating}-star rating from {reviews} users. Features {prime} delivery and includes advanced sensors for fitness tracking, GPS navigation, and seamless smartphone integration.',
+    faqs: [
+      { q: 'Can I make calls from the watch?', a: 'Supports Bluetooth calls when paired with your phone, some models have LTE capability.' },
+      { q: 'How do I change watch faces?', a: 'Choose from hundreds of customizable faces through the companion app or watch settings.' },
+      { q: 'Is it compatible with my phone?', a: 'Works with iPhone (iOS 14+) and Android (8.0+) devices via Bluetooth connection.' },
+      { q: 'What health metrics does it track?', a: 'Monitors heart rate, SpO2, sleep quality, stress levels, and workout performance.' }
+    ]
+  },
+  headphones: {
+    benefits: ['Active noise cancellation technology', 'Premium audio drivers for clear sound', 'Comfortable fit for all-day wear', 'Long wireless battery life'],
+    verdictTemplate: 'Rated {rating} stars by {reviews} audiophiles, these headphones deliver exceptional sound quality with premium drivers and active noise cancellation. {prime} eligible with industry-leading comfort for extended listening sessions.',
+    faqs: [
+      { q: 'How effective is the noise cancellation?', a: 'ANC reduces ambient noise by up to 95%, ideal for flights, commutes, and focus work.' },
+      { q: 'What is the battery life?', a: 'Up to 30+ hours of playback with ANC on, quick charge gives 5 hours in 10 minutes.' },
+      { q: 'Are they comfortable for long sessions?', a: 'Memory foam ear cushions and adjustable headband provide all-day comfort.' },
+      { q: 'Can I use them for phone calls?', a: 'Built-in microphones with noise isolation ensure crystal-clear call quality.' }
+    ]
+  },
+  supplement: {
+    benefits: ['Third-party tested for purity', 'No artificial fillers or additives', 'Optimal dosage per serving', 'Fast absorption formula'],
+    verdictTemplate: 'With {rating} stars from {reviews} verified buyers, this supplement meets the highest quality standards. Third-party tested for purity and potency, {prime} shipping ensures fresh delivery directly to your door.',
+    faqs: [
+      { q: 'Is this third-party tested?', a: 'Yes, independently tested by certified labs for purity, potency, and contaminants.' },
+      { q: 'When should I take this supplement?', a: 'Best taken with food for optimal absorption, follow label directions for timing.' },
+      { q: 'Are there any allergens?', a: 'Check product label for specific allergen information including gluten, dairy, and soy.' },
+      { q: 'How long until I see results?', a: 'Most users notice benefits within 2-4 weeks of consistent daily use.' }
+    ]
+  },
+  running_shoes: {
+    benefits: ['Responsive cushioning for impact protection', 'Breathable mesh upper keeps feet cool', 'Durable outsole for long mileage', 'Lightweight design reduces fatigue'],
+    verdictTemplate: 'These running shoes earn {rating} stars from {reviews} runners for their exceptional comfort and performance. Featuring advanced cushioning technology and {prime} delivery, they support miles of training and racing.',
+    faqs: [
+      { q: 'Are these good for long distance running?', a: 'Designed for 400+ miles with cushioning that maintains responsiveness over time.' },
+      { q: 'Do they run true to size?', a: 'Most runners find them true to size, consider half size up for wide feet.' },
+      { q: 'Are they suitable for road and trail?', a: 'Optimized for road running, some models offer trail-specific versions.' },
+      { q: 'How much do they weigh?', a: 'Lightweight design at approximately 9-10 oz for mens, 7-8 oz for womens.' }
+    ]
+  },
+  electrolyte: {
+    benefits: ['Zero sugar, no artificial sweeteners', 'Optimal sodium and potassium ratio', 'Fast hydration during workouts', 'Keto and paleo friendly formula'],
+    verdictTemplate: 'Rated {rating} stars by {reviews} athletes, this electrolyte formula provides essential minerals without sugar or artificial ingredients. Perfect for keto dieters and endurance athletes, with {prime} availability.',
+    faqs: [
+      { q: 'Is this keto friendly?', a: 'Yes, zero carbs and zero sugar, designed specifically for low-carb and keto lifestyles.' },
+      { q: 'How much sodium is in each serving?', a: 'Contains 1000mg sodium per serving, matching sports science recommendations.' },
+      { q: 'When should I drink this?', a: 'Before, during, or after workouts, or anytime you need hydration support.' },
+      { q: 'Does it taste salty?', a: 'Naturally flavored with a mild taste, not overly salty despite high sodium content.' }
+    ]
+  },
+  protein_powder: {
+    benefits: ['High protein per serving (20-30g)', 'Complete amino acid profile', 'Mixes easily without clumps', 'Great taste with natural flavors'],
+    verdictTemplate: 'This protein powder delivers {rating}-star quality according to {reviews} fitness enthusiasts. Features premium protein sources with complete amino acids for muscle recovery, {prime} eligible for fast delivery.',
+    faqs: [
+      { q: 'How much protein per serving?', a: 'Each serving provides 20-30g of high-quality protein depending on flavor.' },
+      { q: 'Is it good for building muscle?', a: 'Complete amino acid profile supports muscle protein synthesis and recovery.' },
+      { q: 'Does it mix well?', a: 'Instantized formula mixes smoothly in water, milk, or smoothies without clumping.' },
+      { q: 'Is it suitable for lactose intolerant people?', a: 'Check label for whey isolate versions which contain minimal lactose.' }
+    ]
+  },
+  kitchen_appliance: {
+    benefits: ['Easy to clean and maintain', 'Multiple cooking functions', 'Energy efficient operation', 'Durable construction for daily use'],
+    verdictTemplate: 'Home cooks rate this {rating} stars across {reviews} reviews for its versatility and reliability. Simplifies meal prep with multiple functions and easy cleanup, available with {prime} delivery.',
+    faqs: [
+      { q: 'Is it dishwasher safe?', a: 'Removable parts are typically dishwasher safe, check manual for specific components.' },
+      { q: 'How many servings can it make?', a: 'Capacity varies by model, most handle 4-8 servings for family meals.' },
+      { q: 'What is the warranty?', a: 'Includes manufacturer warranty, typically 1-2 years with registration.' },
+      { q: 'Is it easy to store?', a: 'Compact design fits in standard cabinets, cord storage included on most models.' }
+    ]
+  },
+  generic: {
+    benefits: ['Highly rated by verified buyers', 'Quality materials and construction', 'Excellent value for the price', 'Fast and reliable delivery'],
+    verdictTemplate: 'With {rating} stars from {reviews} verified purchasers, this product consistently exceeds expectations. Combines quality construction with excellent value, {prime} shipping ensures quick delivery.',
+    faqs: [
+      { q: 'Is this worth the price?', a: 'Highly rated for value, offering quality that matches or exceeds more expensive alternatives.' },
+      { q: 'How is the build quality?', a: 'Constructed with durable materials designed for long-term daily use.' },
+      { q: 'What if I need to return it?', a: 'Amazon offers hassle-free returns within 30 days of purchase.' },
+      { q: 'Is this the latest version?', a: 'Check product listing for model year and any updated versions available.' }
+    ]
+  }
 };
 
-/**
- * Generate default evidence claims (HELPER - NOT EXPORTED)
- */
+const detectProductCategory = (title: string, brand?: string): string => {
+  const t = title.toLowerCase();
+  const b = (brand || '').toLowerCase();
+
+  if (/fitbit|garmin|whoop|oura|apple watch|samsung watch|amazfit/i.test(t) || /tracker|fitness band/i.test(t)) {
+    return /watch/i.test(t) ? 'smartwatch' : 'fitness_tracker';
+  }
+  if (/smartwatch|watch\s*(series|ultra|se)|galaxy watch/i.test(t)) return 'smartwatch';
+  if (/headphone|earbuds|airpods|earbud|over-ear|wireless.*audio/i.test(t)) return 'headphones';
+  if (/electrolyte|lmnt|liquid iv|nuun|hydration/i.test(t)) return 'electrolyte';
+  if (/protein|whey|casein|mass gainer/i.test(t)) return 'protein_powder';
+  if (/vitamin|supplement|capsule|tablet|probiotic|omega|magnesium|zinc|creatine/i.test(t)) return 'supplement';
+  if (/running shoe|trainer|sneaker|marathon|racing flat/i.test(t) || /nike|asics|hoka|brooks|saucony|new balance/i.test(b)) return 'running_shoes';
+  if (/blender|air fryer|instant pot|pressure cooker|food processor|mixer/i.test(t)) return 'kitchen_appliance';
+
+  return 'generic';
+};
+
+const generateSmartVerdict = (product: ProductDetails): string => {
+  const category = detectProductCategory(product.title, product.brand);
+  const template = PRODUCT_CATEGORIES[category]?.verdictTemplate || PRODUCT_CATEGORIES.generic.verdictTemplate;
+
+  const rating = product.rating?.toFixed(1) || '4.5';
+  const reviews = (product.reviewCount || 0).toLocaleString();
+  const prime = product.prime ? 'Prime' : 'standard';
+
+  return template
+    .replace('{rating}', rating)
+    .replace('{reviews}', reviews)
+    .replace('{prime}', prime);
+};
+
+const generateSmartClaims = (product: ProductDetails): string[] => {
+  const category = detectProductCategory(product.title, product.brand);
+  return PRODUCT_CATEGORIES[category]?.benefits || PRODUCT_CATEGORIES.generic.benefits;
+};
+
+const generateProductFaqs = (product: ProductDetails): Array<{q: string; a: string}> => {
+  const category = detectProductCategory(product.title, product.brand);
+  return PRODUCT_CATEGORIES[category]?.faqs || PRODUCT_CATEGORIES.generic.faqs;
+};
+
+const generateDefaultVerdict = (title: string): string => {
+  const category = detectProductCategory(title, '');
+  const template = PRODUCT_CATEGORIES[category]?.verdictTemplate || PRODUCT_CATEGORIES.generic.verdictTemplate;
+  return template.replace('{rating}', '4.5').replace('{reviews}', '1,000+').replace('{prime}', 'Prime');
+};
+
 const generateDefaultClaims = (): string[] => {
-  return [
-    'Premium build quality with attention to detail',
-    'Industry-leading performance metrics',
-    'Backed by comprehensive warranty',
-    'Trusted by thousands of verified buyers',
-  ];
+  return PRODUCT_CATEGORIES.generic.benefits;
 };
 
 /**
@@ -2298,7 +2423,7 @@ const generateTacticalLinkHtml = (
 };
 
 /**
- * Generate Elite Bento style product box (HELPER - NOT EXPORTED)
+ * Generate Elite Bento style product box with FAQs (HELPER - NOT EXPORTED)
  */
 const generateEliteBentoHtml = (
   product: ProductDetails,
@@ -2307,54 +2432,57 @@ const generateEliteBentoHtml = (
   tag: string,
   currentDate: string
 ): string => {
-  const bullets = (product.evidenceClaims || generateDefaultClaims()).slice(0, 4);
+  const bullets = product.evidenceClaims?.length ? product.evidenceClaims.slice(0, 4) : generateSmartClaims(product);
+  const verdict = product.verdict || generateSmartVerdict(product);
+  const faqs = generateProductFaqs(product);
+
+  const faqHtml = faqs.map((faq, idx) => `
+    <div style="border-bottom:${idx < faqs.length - 1 ? '1px solid #e2e8f0' : 'none'};padding:12px 0;">
+      <div style="font-weight:700;color:#1e293b;font-size:13px;margin-bottom:6px;">${faq.q}</div>
+      <div style="color:#64748b;font-size:12px;line-height:1.5;">${faq.a}</div>
+    </div>
+  `).join('');
 
   return `
 <!-- AmzWP Elite Bento Box -->
 <div style="max-width:1000px;margin:3rem auto;padding:0;background:#fff;border-radius:2.5rem;box-shadow:0 25px 80px rgba(0,0,0,0.1);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  
-  <!-- Header Badge -->
+
   <div style="background:linear-gradient(135deg,#1e293b,#334155);padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center;">
-    <span style="color:#fbbf24;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;">⭐ Editor's Choice</span>
+    <span style="color:#fbbf24;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.15em;">Editor's Choice</span>
     <span style="color:#94a3b8;font-size:10px;font-weight:600;">Verified ${currentDate}</span>
   </div>
-  
+
   <div style="display:flex;flex-wrap:wrap;">
-    <!-- Image Section -->
     <div style="flex:1;min-width:280px;padding:2.5rem;background:linear-gradient(135deg,#f8fafc,#fff);display:flex;align-items:center;justify-content:center;position:relative;">
       <div style="position:absolute;top:1rem;left:1rem;background:#fff;padding:8px 14px;border-radius:2rem;box-shadow:0 4px 15px rgba(0,0,0,0.1);display:flex;align-items:center;gap:6px;">
         <span style="color:#f59e0b;font-size:12px;">${'★'.repeat(stars)}</span>
         <span style="color:#64748b;font-size:11px;font-weight:600;">${(product.reviewCount || 0).toLocaleString()}</span>
       </div>
       <img src="${product.imageUrl}" alt="${product.title}" style="max-width:280px;max-height:280px;object-fit:contain;filter:drop-shadow(0 20px 40px rgba(0,0,0,0.15));">
-      ${product.prime ? '<div style="position:absolute;bottom:1rem;left:1rem;background:#232f3e;color:#fff;padding:6px 12px;border-radius:8px;font-size:10px;font-weight:700;">✓ Prime</div>' : ''}
+      ${product.prime ? '<div style="position:absolute;bottom:1rem;left:1rem;background:#232f3e;color:#fff;padding:6px 12px;border-radius:8px;font-size:10px;font-weight:700;">Prime</div>' : ''}
     </div>
-    
-    <!-- Content Section -->
+
     <div style="flex:1.2;min-width:320px;padding:2.5rem;">
       <div style="display:inline-block;background:linear-gradient(135deg,#eff6ff,#dbeafe);color:#2563eb;padding:6px 14px;border-radius:2rem;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1rem;">${product.category || 'Featured'}</div>
-      
+
       <h3 style="margin:0 0 1rem;font-size:1.75rem;font-weight:900;color:#0f172a;line-height:1.2;">${product.title}</h3>
-      
-      <!-- Verdict -->
+
       <div style="background:#f8fafc;border-left:4px solid #3b82f6;padding:1rem 1.25rem;border-radius:0 1rem 1rem 0;margin-bottom:1.5rem;">
-        <p style="margin:0;color:#475569;font-size:14px;line-height:1.6;">${product.verdict || generateDefaultVerdict(product.title)}</p>
+        <p style="margin:0;color:#475569;font-size:14px;line-height:1.6;">${verdict}</p>
         <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
-          <span style="color:#22c55e;font-size:11px;font-weight:600;">✓ Verified Analysis</span>
+          <span style="color:#22c55e;font-size:11px;font-weight:600;">Verified Analysis</span>
         </div>
       </div>
-      
-      <!-- Benefits -->
+
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:1.5rem;">
         ${bullets.map(claim => `
           <div style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:#f0fdf4;border-radius:10px;">
-            <span style="color:#22c55e;font-weight:bold;font-size:12px;">✓</span>
+            <span style="color:#22c55e;font-weight:bold;font-size:12px;">+</span>
             <span style="color:#166534;font-size:12px;font-weight:500;line-height:1.4;">${claim}</span>
           </div>
         `).join('')}
       </div>
-      
-      <!-- Price & CTA -->
+
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;padding-top:1.5rem;border-top:1px solid #e2e8f0;">
         <div>
           <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;">Best Price</div>
@@ -2362,18 +2490,22 @@ const generateEliteBentoHtml = (
         </div>
         <a href="${amazonUrl}" target="_blank" rel="nofollow sponsored noopener" style="display:inline-flex;align-items:center;gap:10px;padding:16px 28px;background:linear-gradient(135deg,#1e293b,#334155);color:#fff;text-decoration:none;border-radius:14px;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:0.1em;box-shadow:0 10px 30px rgba(30,41,59,0.3);">
           Check Price
-          <span style="font-size:16px;">→</span>
+          <span style="font-size:16px;">-></span>
         </a>
       </div>
     </div>
   </div>
-  
-  <!-- Trust Footer -->
-  <div style="background:#f8fafc;padding:1rem 2rem;display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;border-top:1px solid #e2e8f0;">
-    <span style="color:#64748b;font-size:11px;display:flex;align-items:center;gap:6px;">🔒 Secure Checkout</span>
-    <span style="color:#64748b;font-size:11px;display:flex;align-items:center;gap:6px;">🚚 Fast Shipping</span>
-    <span style="color:#64748b;font-size:11px;display:flex;align-items:center;gap:6px;">↩️ Easy Returns</span>
-    <span style="color:#64748b;font-size:11px;display:flex;align-items:center;gap:6px;">✓ Amazon Verified</span>
+
+  <div style="background:#f8fafc;padding:1.5rem 2rem;border-top:1px solid #e2e8f0;">
+    <div style="font-size:12px;font-weight:800;color:#1e293b;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1rem;">Frequently Asked Questions</div>
+    ${faqHtml}
+  </div>
+
+  <div style="background:#fff;padding:1rem 2rem;display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;border-top:1px solid #e2e8f0;">
+    <span style="color:#64748b;font-size:11px;display:flex;align-items:center;gap:6px;">Secure Checkout</span>
+    <span style="color:#64748b;font-size:11px;display:flex;align-items:center;gap:6px;">Fast Shipping</span>
+    <span style="color:#64748b;font-size:11px;display:flex;align-items:center;gap:6px;">Easy Returns</span>
+    <span style="color:#64748b;font-size:11px;display:flex;align-items:center;gap:6px;">Amazon Verified</span>
   </div>
 </div>
 <!-- /AmzWP Elite Bento Box -->`;
