@@ -235,37 +235,70 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
     
     const calculateRelevance = useCallback((text: string, product: ProductDetails): number => {
         const cacheKey = `${text.slice(0, 100)}_${product.id}`;
-        
+
         if (relevanceCache.current.has(cacheKey)) {
             return relevanceCache.current.get(cacheKey)!;
         }
-        
+
         const cleanText = text.toLowerCase();
-        const titleWords = product.title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-        const brand = product.brand?.toLowerCase();
-        
         let score = 0;
-        
-        if (cleanText.includes(product.title.toLowerCase())) score += 100;
-        if (brand && cleanText.includes(brand)) score += 20;
-        
+
+        // PRIORITY 1: Check if the exact mention quote is in this block (highest priority)
+        if (product.exactMention) {
+            const mentionLower = product.exactMention.toLowerCase();
+            const mentionWords = mentionLower.split(/\s+/).filter(w => w.length > 3);
+            const matchCount = mentionWords.filter(w => cleanText.includes(w)).length;
+            const matchRatio = mentionWords.length > 0 ? matchCount / mentionWords.length : 0;
+
+            if (matchRatio > 0.7) {
+                score += 1000; // Very high score for exact match
+            }
+        }
+
+        // PRIORITY 2: Full title match
+        if (cleanText.includes(product.title.toLowerCase())) {
+            score += 100;
+        }
+
+        // PRIORITY 3: Brand match
+        const brand = product.brand?.toLowerCase();
+        if (brand && cleanText.includes(brand)) {
+            score += 50;
+        }
+
+        // PRIORITY 4: Title word matches
+        const titleWords = product.title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
         titleWords.forEach(word => {
-            if (cleanText.includes(word)) score += 5;
+            if (cleanText.includes(word)) score += 10;
         });
-        
+
         if (text.length < 50 && score < 50) score -= 10;
-        
+
         relevanceCache.current.set(cacheKey, score);
-        
+
         if (relevanceCache.current.size > 1000) {
             const keys = Array.from(relevanceCache.current.keys()).slice(0, 500);
             keys.forEach(k => relevanceCache.current.delete(k));
         }
-        
+
         return score;
     }, []);
 
     const findBestInsertionIndex = useCallback((product: ProductDetails, nodesSnapshot: EditorNode[]): number => {
+        // PRECISION: If we have a paragraph index, use it directly
+        if (typeof product.paragraphIndex === 'number' && product.paragraphIndex >= 0) {
+            let htmlBlockCount = 0;
+            for (let i = 0; i < nodesSnapshot.length; i++) {
+                if (nodesSnapshot[i].type === 'HTML') {
+                    if (htmlBlockCount === product.paragraphIndex) {
+                        return i + 1;
+                    }
+                    htmlBlockCount++;
+                }
+            }
+        }
+
+        // Fallback: Use content matching
         let bestIndex = 0;
         let maxScore = -1;
 
@@ -278,7 +311,7 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
                 }
             }
         });
-        
+
         return bestIndex + 1;
     }, [calculateRelevance]);
 
@@ -338,27 +371,56 @@ export const PostEditor: React.FC<PostEditorProps> = ({ post, config, onBack }) 
         let newNodes = [...editorNodes];
         let injectedCount = 0;
 
-        unplaced.forEach(p => {
-             let bestIdx = 0;
-             let maxScore = -1;
-             
-             newNodes.forEach((node, idx) => {
-                if (node.type === 'HTML' && node.content) {
-                    const score = calculateRelevance(node.content, p);
-                    if (score > maxScore) {
-                        maxScore = score;
-                        bestIdx = idx;
+        // Sort by paragraph index to insert in order (prevents index shifting issues)
+        const sortedUnplaced = [...unplaced].sort((a, b) => {
+            const aIdx = a.paragraphIndex ?? Infinity;
+            const bIdx = b.paragraphIndex ?? Infinity;
+            return bIdx - aIdx; // Reverse order so we insert from bottom to top
+        });
+
+        sortedUnplaced.forEach(p => {
+            let bestIdx = 0;
+            let maxScore = -1;
+
+            // PRECISION: If we have a paragraph index, try to use it directly
+            if (typeof p.paragraphIndex === 'number' && p.paragraphIndex >= 0) {
+                // Find HTML blocks and map to paragraph indices
+                let htmlBlockCount = 0;
+                for (let i = 0; i < newNodes.length; i++) {
+                    if (newNodes[i].type === 'HTML') {
+                        if (htmlBlockCount === p.paragraphIndex) {
+                            bestIdx = i;
+                            maxScore = 10000; // Use paragraph index directly
+                            break;
+                        }
+                        htmlBlockCount++;
                     }
                 }
-             });
-             
-             const newNode: EditorNode = { id: `prod-node-${p.id}-${Date.now()}`, type: 'PRODUCT', productId: p.id };
-             newNodes.splice(bestIdx + 1, 0, newNode);
-             injectedCount++;
+            }
+
+            // Fallback: Use content matching if paragraph index didn't work
+            if (maxScore < 10000) {
+                newNodes.forEach((node, idx) => {
+                    if (node.type === 'HTML' && node.content) {
+                        const score = calculateRelevance(node.content, p);
+                        if (score > maxScore) {
+                            maxScore = score;
+                            bestIdx = idx;
+                        }
+                    }
+                });
+            }
+
+            // Only inject if we found a reasonable match
+            if (maxScore > 0) {
+                const newNode: EditorNode = { id: `prod-node-${p.id}-${Date.now()}`, type: 'PRODUCT', productId: p.id };
+                newNodes.splice(bestIdx + 1, 0, newNode);
+                injectedCount++;
+            }
         });
 
         setEditorNodes(newNodes);
-        toast(`Sovereign Automation: ${injectedCount} Assets Deployed`, { style: { background: "#0ea5e9" } });
+        toast(`Precision Deploy: ${injectedCount} Assets Placed`, { style: { background: "#0ea5e9" } });
     };
 
     // --- STANDARD OPERATIONS ---

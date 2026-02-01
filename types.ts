@@ -424,6 +424,15 @@ export interface ProductDetails {
   
   /** Confidence score (0-100) */
   confidence?: number;
+
+  /** Exact text quote where product was mentioned in content */
+  exactMention?: string;
+
+  /** Block index where product was mentioned (for precise placement) */
+  mentionBlockIndex?: number;
+
+  /** Paragraph number in original content */
+  paragraphIndex?: number;
 }
 
 /**

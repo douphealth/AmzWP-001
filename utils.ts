@@ -1617,47 +1617,65 @@ const callOpenRouter = async (
 // CONTENT ANALYSIS & PRODUCT DETECTION
 // ============================================================================
 
-const ANALYSIS_SYSTEM_PROMPT = `You are an expert Amazon affiliate content analyzer and monetization strategist. Your task is to analyze content and identify specific products that can be monetized through Amazon affiliate links.
+const ANALYSIS_SYSTEM_PROMPT = `You are a PRECISION product extraction system. Your ONLY task is to identify EXPLICITLY NAMED products in content.
 
-You must return ONLY valid JSON with no additional text or explanation.`;
+CRITICAL RULES:
+1. ONLY extract products that are EXPLICITLY NAMED in the text (brand name + model/product name)
+2. DO NOT guess, infer, or suggest products that are not explicitly mentioned
+3. Each product MUST have an exact quote from the content proving it exists
+4. Generic terms like "fitness tracker" or "protein powder" are NOT products - you need specific names like "Fitbit Charge 5" or "Optimum Nutrition Gold Standard"
+5. If no specific products are named, return an empty products array
 
-const ANALYSIS_USER_PROMPT = `Analyze this content and identify products for Amazon affiliate monetization.
+You must return ONLY valid JSON with no additional text.`;
 
-CONTENT TITLE: {{TITLE}}
+const ANALYSIS_USER_PROMPT = `Extract ONLY the EXPLICITLY NAMED products from this content.
+
+TITLE: {{TITLE}}
 
 CONTENT:
 {{CONTENT}}
 
-INSTRUCTIONS:
-1. Identify specific products mentioned or implied that are available on Amazon
-2. For each product, provide a precise Amazon search query
-3. Suggest optimal placement within the content (intro=0, middle=1, conclusion=2)
-4. Assess confidence level (0-100) for each product match
-5. If content compares multiple products, flag for comparison table
+EXTRACTION RULES:
+1. A product is ONLY valid if it has a SPECIFIC BRAND NAME and/or MODEL NAME mentioned in the text
+2. You MUST provide the EXACT QUOTE from the content where the product is mentioned
+3. Generic categories (e.g., "running shoes", "blender") are NOT products unless a specific brand/model is named
+4. The exactQuote MUST be a real sentence/phrase copied directly from the content
+5. paragraphNumber is the paragraph index (0-based) where the product first appears
+
+EXAMPLES OF VALID PRODUCTS:
+- "Apple AirPods Pro 2" - specific brand and model
+- "Ninja Professional Blender BL610" - brand and model number
+- "Fitbit Charge 5" - brand and specific product line
+- "Sony WH-1000XM5" - brand and model
+
+EXAMPLES OF INVALID (DO NOT EXTRACT):
+- "wireless earbuds" - no brand specified
+- "a good blender" - no specific product
+- "fitness tracker" - generic category
+- "running shoes" - no brand/model
 
 REQUIRED JSON FORMAT:
 {
   "products": [
     {
-      "id": "unique-string-id",
-      "searchQuery": "exact product search for Amazon",
-      "title": "Product Name",
-      "relevanceReason": "Why this product fits the content",
-      "placement": "intro|middle|conclusion",
-      "confidence": 85,
-      "category": "Electronics|Kitchen|Home|etc",
-      "priceRange": "budget|mid|premium"
+      "id": "unique-id",
+      "searchQuery": "exact brand + model for Amazon search",
+      "title": "Full Product Name as mentioned",
+      "exactQuote": "The exact sentence from content where this product is mentioned",
+      "paragraphNumber": 3,
+      "confidence": 95,
+      "category": "Electronics|Kitchen|Fitness|etc"
     }
   ],
   "comparison": {
-    "shouldCreate": true,
-    "title": "Comparison table title if applicable",
-    "productIds": ["id1", "id2"]
+    "shouldCreate": false,
+    "productIds": []
   },
   "contentType": "review|listicle|how-to|informational|comparison",
-  "monetizationPotential": "high|medium|low",
-  "suggestedKeywords": ["keyword1", "keyword2"]
-}`;
+  "totalProductsMentioned": 2
+}
+
+IMPORTANT: If no specific products with brand names are mentioned, return: {"products": [], "comparison": {"shouldCreate": false}, "contentType": "informational", "totalProductsMentioned": 0}`;
 
 /**
  * Analyze content and find monetizable products
@@ -1718,16 +1736,46 @@ export const analyzeContentAndFindProduct = async (
       };
     }
 
-    // Process detected products
+    // Process detected products with STRICT VALIDATION
     const products: ProductDetails[] = [];
+    const contentLower = cleanContent.toLowerCase();
 
     console.log('[Analysis] Processing', parsed.products?.length || 0, 'detected products');
     console.log('[Analysis] SerpAPI key configured:', !!config.serpApiKey);
 
     for (const p of (parsed.products || [])) {
-      // Skip low confidence matches
-      if (p.confidence < 40) {
+      // STRICT: Skip low confidence matches (raised to 80%)
+      if (p.confidence < 80) {
         console.log('[Analysis] Skipping low confidence product:', p.title, p.confidence);
+        continue;
+      }
+
+      // STRICT: Validate that the exact quote exists in the content
+      const exactQuote = p.exactQuote || '';
+      const quoteLower = exactQuote.toLowerCase().trim();
+
+      if (!quoteLower || quoteLower.length < 10) {
+        console.log('[Analysis] Skipping product with missing/short quote:', p.title);
+        continue;
+      }
+
+      // Check if the quote actually exists in content (fuzzy match for minor variations)
+      const quoteWords = quoteLower.split(/\s+/).filter((w: string) => w.length > 3);
+      const matchingWords = quoteWords.filter((word: string) => contentLower.includes(word));
+      const matchRatio = quoteWords.length > 0 ? matchingWords.length / quoteWords.length : 0;
+
+      if (matchRatio < 0.7) {
+        console.log('[Analysis] Skipping product - quote not found in content:', p.title, 'Match ratio:', matchRatio);
+        continue;
+      }
+
+      // STRICT: Verify the product title/brand appears in content
+      const productTitleLower = (p.title || p.searchQuery || '').toLowerCase();
+      const titleWords = productTitleLower.split(/\s+/).filter((w: string) => w.length > 2);
+      const titleMatchCount = titleWords.filter((word: string) => contentLower.includes(word)).length;
+
+      if (titleMatchCount < 2) {
+        console.log('[Analysis] Skipping product - title not found in content:', p.title);
         continue;
       }
 
@@ -1750,10 +1798,8 @@ export const analyzeContentAndFindProduct = async (
         console.warn('[Analysis] No SerpAPI key configured - using placeholder data');
       }
 
-      // Determine insertion index based on placement
-      const insertionIndex = p.placement === 'intro' ? 0 
-        : p.placement === 'conclusion' ? -1 
-        : 1;
+      // Use paragraph number for precise placement
+      const insertionIndex = typeof p.paragraphNumber === 'number' ? p.paragraphNumber : 0;
 
       products.push({
         id: p.id || `prod-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -1772,6 +1818,9 @@ export const analyzeContentAndFindProduct = async (
         deploymentMode: 'ELITE_BENTO',
         faqs: productData.faqs || generateDefaultFaqs(p.title || p.searchQuery),
         specs: productData.specs || {},
+        confidence: p.confidence,
+        exactMention: exactQuote,
+        paragraphIndex: p.paragraphNumber,
       });
     }
 
